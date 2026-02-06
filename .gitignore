@@ -1,0 +1,8 @@
+# Go build artifacts
+/gohello
+*.exe
+*.out
+*.test
+
+# OS junk
+.DS_Store
