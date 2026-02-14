@@ -15,14 +15,14 @@ uses Docker for containerization and simplified deployment.
 
 - Backend technology stack
     - Web Server: [nginx](https://www.nginx.com/) as a reverse proxy server
-    - Backend Runtime: [Node.js](https://nodejs.org/)
-    - Backend Framework: [Express](https://expressjs.com/)
+    - Backend Runtime: [Go](https://go.dev/) go runtime
+    - Backend Framework: [Go net/http](https://pkg.go.dev/net/http) go standard library
     - Database: [SQLite](https://www.sqlite.org/index.html) for lightweight data storage
 - Frontend technology stack
-    - Templates: [EJS](https://ejs.co/) for server-side rendering
+    - Templates: [Go html/template]([https://ejs.co/](https://pkg.go.dev/html/template)) for server-side templating with go
     - UX/UI: [Bootstrap](https://getbootstrap.com/) for responsive design
 - Testing Frameworks
-    - End-to-End Testing: [Playwright](https://playwright.dev/)
+    - Unit-Testing: [Go testing](https://pkg.go.dev/testing)
 
 ## Manual Deployment
 
