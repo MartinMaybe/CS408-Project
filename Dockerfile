@@ -5,8 +5,8 @@ FROM golang:1.19 AS build-stage
 
 WORKDIR /app
 
-COPY go.mod go.sum ./
-RUN go mod download
+COPY go.mod ./
+RUN go mod tidy
 
 COPY *.go ./
 COPY hello.html ./
