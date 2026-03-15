@@ -12,7 +12,19 @@ type Page struct {
 	Time string
 }
 
-var templates = template.Must(template.ParseFiles("templates/landing.html"))
+var templates = template.Must(template.ParseFiles(
+	"templates/landing.html",
+	"templates/session.html",
+))
+
+func sessionHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("sessionHandler was called")
+
+	err := templates.ExecuteTemplate(w, "session.html", nil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
 
 func landingHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("landingHandler was called")
@@ -33,6 +45,8 @@ func landingHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	http.HandleFunc("/", landingHandler)
+	http.HandleFunc("/session", sessionHandler)
+	
 	log.Println("Starting server on http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
