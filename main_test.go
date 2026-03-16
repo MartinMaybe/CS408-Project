@@ -6,11 +6,11 @@ import (
 	"testing"
 )
 
-func TestHelloHandler(t *testing.T) {
+func TestLandingHandler(t *testing.T) {
 	req := httptest.NewRequest("Get", "/", nil)
 	w := httptest.NewRecorder()
 
-	helloHandler(w, req)
+	landingHandler(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Fatalf("Expected status code %d, got %d", http.StatusOK, w.Code)
