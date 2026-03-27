@@ -3,6 +3,9 @@
 *.exe
 *.out
 *.test
+*.db
+*.db-*
 
 # OS junk
 .DS_Store
+*.pdf
