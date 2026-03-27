@@ -11,7 +11,7 @@ if [ -d ".git" ]; then
     git pull origin main
 else 
     echo "Cloning repository.."
-    git clone https://github.com/MartinMaybe/CS408-Project
+    git clone https://github.com/MartinMaybe/CS408-Project .
 fi
 
 echo "Downloading dependencies.."
