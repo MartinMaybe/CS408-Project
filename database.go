@@ -136,5 +136,21 @@ func ensureSchema(db *sql.DB) error {
 		}
 	}
 
+	// Prepopulate nodes
+	_, err = tx.Exec(`
+	INSERT OR IGNORE INTO nodes (id, kind, prompt, json) VALUES
+		(1, 'yesno', 'Is it an animal?', '{}'),
+		(2, 'yesno', 'Does it have fur?', '{}'),
+		(3, 'yesno', 'Is it a plant?', '{}'),
+		(4, 'yesno', 'Is it a dog?', '{}'),
+		(5, 'yesno', 'Is it a reptile?', '{}'),
+		(6, 'yesno', 'Is it a tree?', '{}'),
+		(7, 'yesno', 'Is it a flower?', '{}')
+	`)
+
+	if err != nil {
+		return err
+	}
+
 	return tx.Commit()
 }

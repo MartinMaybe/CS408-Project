@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
@@ -33,6 +34,10 @@ var nodes = map[int]Node{
 	1: {ID: 1, Question: "Is it an animal?", YesNext: 2, NoNext: 3},
 	2: {ID: 2, Question: "Does it have fur?", YesNext: 4, NoNext: 5},
 	3: {ID: 3, Question: "Is it a plant?", YesNext: 6, NoNext: 7},
+	4: {ID: 4, Question: "Is it a dog?", YesNext: 0, NoNext: 0},
+	5: {ID: 5, Question: "Is it a reptile?", YesNext: 0, NoNext: 0},
+	6: {ID: 6, Question: "Is it a tree?", YesNext: 0, NoNext: 0},
+	7: {ID: 7, Question: "Is it a flower?", YesNext: 0, NoNext: 0},
 }
 
 type SessionPage struct {
@@ -71,11 +76,118 @@ func newPage() *Page {
 
 // #region Request Handlers
 
+func apiCurrentHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("apiCurrentHandler was called")
+
+	node, ok := nodes[currentSession.CurrentNode]
+	if !ok {
+		http.Error(w, "No active session", http.StatusNotFound)
+		return
+	}
+
+	response := map[string]interface{}{
+		"question":  node.Question,
+		"node_id":   node.ID,
+		"decisions": currentSession.Decisions,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func apiChooseHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("apiChooseHandler was called")
+
+	decision := r.URL.Query().Get("decision")
+
+	currentNode, ok := nodes[currentSession.CurrentNode]
+	if !ok {
+		http.Error(w, "Invalid session", http.StatusNotFound)
+		return
+	}
+
+	var nextNodeID int
+	if decision == "yes" {
+		nextNodeID = currentNode.YesNext
+	} else if decision == "no" {
+		nextNodeID = currentNode.NoNext
+	} else {
+		http.Error(w, "Invalid decision", http.StatusBadRequest)
+		return
+	}
+
+	// End of tree
+	if _, ok := nodes[nextNodeID]; !ok {
+
+		_, err := appDB.Exec(`
+			UPDATE sessions 
+			SET current_node_id = ?, path_length = ?
+			WHERE id = ?`,
+			currentSession.CurrentNode,
+			currentSession.Decisions,
+			currentSession.ID,
+		)
+
+		if err != nil {
+			log.Println("DB update error:", err)
+			http.Error(w, "Session completed but failed to update DB", http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"status": "complete",
+		})
+		return
+	}
+
+	currentSession.CurrentNode = nextNodeID
+	currentSession.Decisions++
+
+	//update session in DB
+	_, err := appDB.Exec(`
+		UPDATE sessions 
+		SET current_node_id = ?, path_length = ?
+		WHERE id = ?`,
+		currentSession.CurrentNode,
+		currentSession.Decisions,
+		currentSession.ID,
+	)
+
+	if err != nil {
+		log.Println("DB update error:", err)
+		http.Error(w, "DB update error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "ok",
+	})
+}
+
 func startSessionHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("startSessionHandler was called")
 
+	// currentSession = Session{
+	// 	ID:          1,
+	// 	CurrentNode: 1,
+	// 	Decisions:   0,
+	// }
+	result, err := appDB.Exec(`
+		INSERT INTO sessions (current_node_id, random_seed) 
+		VALUES (?, ?)`, 1, 12345)
+
+	if err != nil {
+		log.Println("DB Insert Error:", err)
+		http.Error(w, "DB Error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	id, _ := result.LastInsertId()
+
 	currentSession = Session{
-		ID:          1,
+		ID:          int(id),
 		CurrentNode: 1,
 		Decisions:   0,
 	}
@@ -118,16 +230,52 @@ func chooseHandler(w http.ResponseWriter, r *http.Request) {
 		nextNodeID = currentNode.YesNext
 	} else if decision == "no" {
 		nextNodeID = currentNode.NoNext
+	} else {
+		http.Error(w, "Invalid decision", http.StatusBadRequest)
+		return
 	}
 
 	// Check that next node exists
 	if _, ok := nodes[nextNodeID]; !ok {
+
+		_, err := appDB.Exec(`
+			UPDATE sessions 
+			SET current_node_id = ?, path_length = ?
+			WHERE id = ?`,
+			currentSession.CurrentNode,
+			currentSession.Decisions,
+			currentSession.ID,
+		)
+
+		if err != nil {
+			log.Println("DB update error:", err)
+			http.Error(w, "Session completed but failed to update DB", http.StatusInternalServerError)
+			return
+		}
+
 		http.Redirect(w, r, "/session/results", http.StatusSeeOther)
 		return
 	}
 
 	currentSession.CurrentNode = nextNodeID
 	currentSession.Decisions++
+
+	// Update session in DB
+	_, err := appDB.Exec(`
+		UPDATE sessions 
+		SET current_node_id = ?, path_length = ?
+		WHERE id = ?`,
+		currentSession.CurrentNode,
+		currentSession.Decisions,
+		currentSession.ID,
+	)
+
+	if err != nil {
+		log.Println("DB update error:", err)
+		http.Error(w, "DB update error", http.StatusInternalServerError)
+		return
+	}
+
 	http.Redirect(w, r, "/session", http.StatusSeeOther)
 }
 
@@ -173,14 +321,14 @@ func sessionResultsHandler(w http.ResponseWriter, r *http.Request) {
 //#endregion
 
 func main() {
-	// var err error
-	// appDB, err = initializeDatabase()
+	var err error
+	appDB, err = initializeDatabase()
 
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	if err != nil {
+		log.Fatal("Database initialization error:", err)
+	}
 
-	// defer appDB.Close()
+	defer appDB.Close()
 
 	http.HandleFunc("/", landingHandler)
 	http.HandleFunc("/session", sessionHandler)
@@ -188,10 +336,12 @@ func main() {
 	http.HandleFunc("/statistics", statisticsHandler)
 	http.HandleFunc("/api/start", startSessionHandler)
 	http.HandleFunc("/session/results", sessionResultsHandler)
+	http.HandleFunc("/api/session/current", apiCurrentHandler)
+	http.HandleFunc("/api/session/choose", apiChooseHandler)
 
 	log.Println("Starting server on http://localhost:8080")
 
-	err := http.ListenAndServe(":8080", nil)
+	err = http.ListenAndServe(":8080", nil)
 	if err != nil {
 		log.Fatal(err)
 	}

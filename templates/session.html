@@ -28,19 +28,19 @@
 <div class="d-flex flex-column align-items-center justify-content-center" style="height: 70vh;">
 
 <!-- Decision Counter -->
-    <h6 class="mb-2 text-muted">0 decisions made</h6>
+    <h6 id="decisionCount" class="mb-2 text-muted">{{.DecisionNum}} decisions made</h6>
 
     <!-- Card container -->
     <div class="border border-dark rounded p-5 bg-white w-75" style="min-height: 250px; border-width:4px;">
         <div class="text-center mb-5">
-            <h3>{{.Question}}</h3>
+            <h3 id="question">{{.Question}}</h3>
         </div>
 
         <div class="d-flex justify-content-between">
 
             <!-- No Button -->
             <div class="text-center">              
-                <a href="/session/choose?decision=no" class="btn btn-danger btn-lg px-5 py-3" style="font-size:1.5rem;">
+                <a href="#" id="noBtn" class="btn btn-danger btn-lg px-5 py-3" style="font-size:1.5rem;">
                     No
                 </a>
                 <div class="mt-2 text-muted">
@@ -49,7 +49,7 @@
             </div>
 
             <div class="text-center">
-                <a href="/session/choose?decision=yes" class="btn btn-success btn-lg px-5 py-3" style="font-size:1.5rem;">
+                <a href="#" id="yesBtn" class="btn btn-success btn-lg px-5 py-3" style="font-size:1.5rem;">
                     Yes
                 </a>
                 <div class="mt-2 text-muted">
@@ -68,6 +68,47 @@
     <span id="datetime"> {{.Time}} </span> 
 
 </footer>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+
+    async function makeDecision(choice) {
+        try {
+            // Send decision to API
+            const res = await fetch(`/api/session/choose?decision=${choice}`);
+            const data = await res.json();
+
+            if (data.status === "complete") {
+                window.location.href = "/session/results";
+                return;
+            }
+
+            // Get updated question
+            const currentRes = await fetch("/api/session/current");
+            const currentData = await currentRes.json();
+
+            // Update UI
+            document.getElementById("question").innerText = currentData.question;
+            document.getElementById("decisionCount").innerText =
+                currentData.decisions + " decisions made";
+
+        } catch (err) {
+            console.error("Error:", err);
+        }
+    }
+
+    // Attach click handlers
+    document.getElementById("yesBtn").addEventListener("click", function(e) {
+        e.preventDefault();
+        makeDecision("yes");
+    });
+
+    document.getElementById("noBtn").addEventListener("click", function(e) {
+        e.preventDefault();
+        makeDecision("no");
+    });
+});
+</script>
 
 </body>
 </html>
