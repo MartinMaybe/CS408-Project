@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+type Page struct {
+	Title    string
+	Time     string
+	Question string
+}
+
 var templates = template.Must(template.ParseFiles(
 	"templates/partials/header.html",
 	"templates/partials/footer.html",

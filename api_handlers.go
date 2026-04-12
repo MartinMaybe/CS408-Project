@@ -2,120 +2,250 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 )
 
-func apiCurrentHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("apiCurrentHandler was called")
-
-	node, ok := nodes[currentSession.CurrentNode]
-	if !ok {
-		http.Error(w, "No active session", http.StatusNotFound)
-		return
-	}
-
-	response := map[string]interface{}{
-		"question":  node.Question,
-		"node_id":   node.ID,
-		"decisions": currentSession.Decisions,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+type SessionResponse struct {
+	ID              int    `json:"id"`
+	CurrentNodeID   int    `json:"current_node_id"`
+	PathLength      int    `json:"path_length"`
+	RandomSeed      int64  `json:"random_seed"`
+	PathFingerprint string `json:"path_fingerprint"`
+	SessionText     string `json:"session_text"`
 }
 
-func apiChooseHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("apiChooseHandler was called")
-
-	decision := r.URL.Query().Get("decision")
-
-	currentNode, ok := nodes[currentSession.CurrentNode]
-	if !ok {
-		http.Error(w, "Invalid session", http.StatusNotFound)
-		return
-	}
-
-	var nextNodeID int
-	if decision == "yes" {
-		nextNodeID = currentNode.YesNext
-	} else if decision == "no" {
-		nextNodeID = currentNode.NoNext
-	} else {
-		http.Error(w, "Invalid decision", http.StatusBadRequest)
-		return
-	}
-
-	// End of tree
-	if _, ok := nodes[nextNodeID]; !ok {
-
-		_, err := appDB.Exec(`
-			UPDATE sessions
-			SET current_node_id = ?, path_length = ?
-			WHERE id = ?`,
-			currentSession.CurrentNode,
-			currentSession.Decisions,
-			currentSession.ID,
-		)
-
-		if err != nil {
-			log.Println("DB update error:", err)
-			http.Error(w, "Session completed but failed to update DB", http.StatusInternalServerError)
-			return
-		}
-
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"status": "complete",
-		})
-		return
-	}
-
-	currentSession.CurrentNode = nextNodeID
-	currentSession.Decisions++
-
-	// update session in DB
-	_, err := appDB.Exec(`
-		UPDATE sessions
-		SET current_node_id = ?, path_length = ?
-		WHERE id = ?`,
-		currentSession.CurrentNode,
-		currentSession.Decisions,
-		currentSession.ID,
-	)
-
-	if err != nil {
-		log.Println("DB update error:", err)
-		http.Error(w, "DB update error", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "ok",
-	})
+type NodeResponse struct {
+	ID     int    `json:"id"`
+	Kind   string `json:"kind"`
+	Prompt string `json:"prompt"`
+	JSON   string `json:"json"`
 }
 
-func startSessionHandler(w http.ResponseWriter, r *http.Request) {
-	log.Println("startSessionHandler was called")
+type CreateSessionResponse struct {
+	SessionID     int `json:"session_id"`
+	CurrentNodeID int `json:"current_node_id"`
+}
 
-	result, err := appDB.Exec(`
-		INSERT INTO sessions (current_node_id, random_seed)
-		VALUES (?, ?)`, 1, 12345)
+type UpdateSessionCurrentRequest struct {
+	NodeID int `json:"node_id"`
+}
 
+type UpdateSessionCurrentResponse struct {
+	SessionID     int `json:"session_id"`
+	CurrentNodeID int `json:"current_node_id"`
+}
+
+type PortLookupResponse struct {
+	PortID int `json:"port_id"`
+}
+
+func sessionsAPIHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		methodNotAllowed(w, http.MethodPost)
+		return
+	}
+
+	postSessionHandler(w, r)
+}
+
+func sessionAPIHandler(w http.ResponseWriter, r *http.Request) {
+	segments := apiPathSegments(r.URL.Path, "/api/sessions/")
+	if len(segments) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+
+	sessionID, err := strconv.Atoi(segments[0])
 	if err != nil {
-		log.Println("DB Insert Error:", err)
+		http.Error(w, "Invalid session ID", http.StatusBadRequest)
+		return
+	}
+
+	switch {
+	case len(segments) == 1 && r.Method == http.MethodGet:
+		getSessionHandler(w, r, sessionID)
+	case len(segments) == 2 && segments[1] == "current" && r.Method == http.MethodPost:
+		postSessionCurrentHandler(w, r, sessionID)
+	case len(segments) == 1:
+		methodNotAllowed(w, http.MethodGet)
+	case len(segments) == 2 && segments[1] == "current":
+		methodNotAllowed(w, http.MethodPost)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func nodeAPIHandler(w http.ResponseWriter, r *http.Request) {
+	segments := apiPathSegments(r.URL.Path, "/api/nodes/")
+	if len(segments) == 0 {
+		http.NotFound(w, r)
+		return
+	}
+
+	nodeID, err := strconv.Atoi(segments[0])
+	if err != nil {
+		http.Error(w, "Invalid node ID", http.StatusBadRequest)
+		return
+	}
+
+	switch {
+	case len(segments) == 1 && r.Method == http.MethodGet:
+		getNodeHandler(w, r, nodeID)
+	case len(segments) == 3 && segments[1] == "ports" && r.Method == http.MethodGet:
+		getNodePortHandler(w, r, nodeID, segments[2])
+	case len(segments) == 1:
+		methodNotAllowed(w, http.MethodGet)
+	case len(segments) == 3 && segments[1] == "ports":
+		methodNotAllowed(w, http.MethodGet)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+func postSessionHandler(w http.ResponseWriter, r *http.Request) {
+	sessionID, err := createSession()
+	if err != nil {
+		log.Println("create session error:", err)
 		http.Error(w, "DB Error: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	id, _ := result.LastInsertId()
-
-	currentSession = Session{
-		ID:          int(id),
-		CurrentNode: 1,
-		Decisions:   0,
+	createdSession, err := getSessionByID(sessionID)
+	if err != nil {
+		log.Println("get created session error:", err)
+		http.Error(w, "DB query error", http.StatusInternalServerError)
+		return
 	}
 
-	http.Redirect(w, r, "/session", http.StatusSeeOther)
+	writeJSON(w, http.StatusCreated, newCreateSessionResponse(createdSession))
+}
+
+func postSessionCurrentHandler(w http.ResponseWriter, r *http.Request, sessionID int) {
+	var request UpdateSessionCurrentRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if request.NodeID <= 0 {
+		http.Error(w, "node_id must be a positive integer", http.StatusBadRequest)
+		return
+	}
+
+	err := updateSessionCurrentNode(sessionID, request.NodeID)
+	if errors.Is(err, ErrNodeNotFound) {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, ErrSessionNotFound) {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Println("update session current node error:", err)
+		http.Error(w, "DB update error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, UpdateSessionCurrentResponse{
+		SessionID:     sessionID,
+		CurrentNodeID: request.NodeID,
+	})
+}
+
+func getSessionHandler(w http.ResponseWriter, r *http.Request, sessionID int) {
+	record, err := getSessionByID(sessionID)
+	if errors.Is(err, ErrSessionNotFound) {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Println("get session error:", err)
+		http.Error(w, "DB query error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, newSessionResponse(record))
+}
+
+func getNodeHandler(w http.ResponseWriter, r *http.Request, nodeID int) {
+	record, err := getNodeByID(nodeID)
+	if errors.Is(err, ErrNodeNotFound) {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Println("get node error:", err)
+		http.Error(w, "DB query error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, newNodeResponse(record))
+}
+
+func getNodePortHandler(w http.ResponseWriter, r *http.Request, nodeID int, portKey string) {
+	portID, err := getPortIDByNodeAndKey(nodeID, portKey)
+	if errors.Is(err, ErrPortNotFound) {
+		http.Error(w, "Port not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Println("get node port error:", err)
+		http.Error(w, "DB query error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, PortLookupResponse{PortID: portID})
+}
+
+func writeJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(payload)
+}
+
+func newCreateSessionResponse(row sessionRow) CreateSessionResponse {
+	return CreateSessionResponse{
+		SessionID:     row.ID,
+		CurrentNodeID: row.CurrentNodeID,
+	}
+}
+
+func newSessionResponse(row sessionRow) SessionResponse {
+	return SessionResponse{
+		ID:              row.ID,
+		CurrentNodeID:   row.CurrentNodeID,
+		PathLength:      row.PathLength,
+		RandomSeed:      row.RandomSeed,
+		PathFingerprint: row.PathFingerprint,
+		SessionText:     row.SessionText,
+	}
+}
+
+func newNodeResponse(row nodeRow) NodeResponse {
+	return NodeResponse{
+		ID:     row.ID,
+		Kind:   row.Kind,
+		Prompt: row.Prompt,
+		JSON:   row.JSON,
+	}
+}
+
+func methodNotAllowed(w http.ResponseWriter, allowedMethod string) {
+	w.Header().Set("Allow", allowedMethod)
+	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+}
+
+func apiPathSegments(path string, prefix string) []string {
+	trimmedPath := strings.TrimPrefix(path, prefix)
+	trimmedPath = strings.Trim(trimmedPath, "/")
+	if trimmedPath == "" {
+		return nil
+	}
+
+	return strings.Split(trimmedPath, "/")
 }

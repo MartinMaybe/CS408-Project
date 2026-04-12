@@ -1,5 +1,18 @@
 package main
 
+type Session struct {
+	ID          int
+	CurrentNode int
+	Decisions   int
+}
+
+type Node struct {
+	ID       int
+	Question string
+	YesNext  int
+	NoNext   int
+}
+
 var currentSession = Session{}
 
 var nodes = map[int]Node{

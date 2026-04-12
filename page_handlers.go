@@ -7,6 +7,20 @@ import (
 	"time"
 )
 
+type SessionPage struct {
+	Title       string
+	Time        string
+	Question    string
+	DecisionNum int
+}
+
+type SessionResultPage struct {
+	Title       string
+	Time        string
+	Decisions   int
+	SummaryText string
+}
+
 func sessionHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("sessionHandler was called")
 
