@@ -3,6 +3,8 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+GO_BUILD_CACHE_DIR="${HOME}/.cache/go-build"
+GO_MODULE_CACHE_DIR="${HOME}/go/pkg/mod"
 
 prompt_for_git_pull() {
     if [ ! -d ".git" ]; then
@@ -42,8 +44,13 @@ fi
 
 prompt_for_git_pull
 
-echo "Downloading dependencies.."
-go mod tidy
+echo "Preparing Go build caches.."
+mkdir -p "$GO_BUILD_CACHE_DIR" "$GO_MODULE_CACHE_DIR"
+export GOCACHE="${GOCACHE:-$GO_BUILD_CACHE_DIR}"
+export GOMODCACHE="${GOMODCACHE:-$GO_MODULE_CACHE_DIR}"
+
+echo "Ensuring Go module dependencies are available.."
+go mod download
 
 echo "Building Go application.."
 go build -o server .
