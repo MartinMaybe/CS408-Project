@@ -1,114 +1,110 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Session</title>
+{{template "header" .}}
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-
-<!-- Navigation Bar -->
-<nav class="navbar navbar-light bg-light px-4">
-    <div class="container-fluid">
-
-        <a class="navbar-brand" href="/">Logo</a>
-
-        <div class="ms-auto">
-            <a href="/statistics" class="btn btn-outline-primary">
-                Statistics
-            </a>
-        </div>
-
-    </div>
-</nav>
-
-<!-- Center page content -->
-<div class="d-flex flex-column align-items-center justify-content-center" style="height: 70vh;">
-
-<!-- Decision Counter -->
-    <h6 id="decisionCount" class="mb-2 text-muted">{{.DecisionNum}} decisions made</h6>
-
-    <!-- Card container -->
-    <div class="border border-dark rounded p-5 bg-white w-75" style="min-height: 250px; border-width:4px;">
-        <div class="text-center mb-5">
-            <h3 id="question">{{.Question}}</h3>
-        </div>
-
-        <div class="d-flex justify-content-between">
-
-            <!-- No Button -->
-            <div class="text-center">              
-                <a href="#" id="noBtn" class="btn btn-danger btn-lg px-5 py-3" style="font-size:1.5rem;">
-                    No
-                </a>
-                <div class="mt-2 text-muted">
-                    0% Chose this option
-                </div>
+<div class="container py-5">
+    <div class="mx-auto" style="max-width: 900px;">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+            <div>
+                <p id="sessionMeta" class="text-muted mb-1">Preparing session...</p>
+                <h1 class="h3 mb-0">Decision Session</h1>
             </div>
 
-            <div class="text-center">
-                <a href="#" id="yesBtn" class="btn btn-success btn-lg px-5 py-3" style="font-size:1.5rem;">
-                    Yes
-                </a>
-                <div class="mt-2 text-muted">
-                    0% Chose this option
+            <button type="button" id="restartBtn" class="btn btn-outline-secondary">
+                Start New Session
+            </button>
+        </div>
+
+        <div id="sessionAlert" class="alert d-none" role="alert"></div>
+
+        <div class="card border-dark shadow-sm">
+            <div class="card-body p-4 p-lg-5">
+                <div class="text-center mb-4">
+                    <div id="loadingSpinner" class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+
+                    <h3 id="question" class="mb-2">Loading session...</h3>
+                    <p id="decisionCount" class="text-muted mb-0">0 decisions made</p>
+                </div>
+
+                <div id="completionPanel" class="alert alert-warning d-none" role="alert">
+                    This branch currently ends here. The next question can be attached here in the next checkpoint.
+                </div>
+
+                <div id="resultsPanel" class="card bg-light border-warning d-none mb-4">
+                    <div class="card-body">
+                        <h2 class="h5 card-title">Session Results</h2>
+                        <p id="resultsSummary" class="card-text text-muted mb-0">
+                            The current branch ends here.
+                        </p>
+                    </div>
+                </div>
+
+                <div id="creationPanel" class="card border-secondary d-none mb-4">
+                    <div class="card-body">
+                        <h2 class="h5 card-title">Create New Question</h2>
+                        <p class="card-text text-muted">
+                            Add a follow-up question to this branch. This checkpoint currently creates yes/no nodes so the tree remains traversable with the existing session UI.
+                        </p>
+
+                        <form id="creationForm" class="row g-3">
+                            <div class="col-12">
+                                <label for="createKind" class="form-label">Question Type</label>
+                                <select id="createKind" class="form-select">
+                                    <option value="yesno">Yes / No</option>
+                                </select>
+                            </div>
+
+                            <div class="col-12">
+                                <label for="createPrompt" class="form-label">Question Prompt</label>
+                                <input
+                                    id="createPrompt"
+                                    type="text"
+                                    class="form-control"
+                                    placeholder="Example: Is it larger than a basketball?"
+                                    maxlength="255"
+                                    required
+                                >
+                            </div>
+
+                            <div class="col-12 d-flex justify-content-end">
+                                <button type="submit" id="createSubmitBtn" class="btn btn-primary">
+                                    Attach Question
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <div id="decisionPanel" class="row g-4">
+                    <div class="col-md-6">
+                        <div class="text-center">
+                            <button type="button" id="noBtn" class="btn btn-danger btn-lg w-100 py-3" style="font-size: 1.5rem;">
+                                No
+                            </button>
+                            <div id="noMeta" class="mt-2 text-muted">
+                                Select to follow the "No" branch.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="text-center">
+                            <button type="button" id="yesBtn" class="btn btn-success btn-lg w-100 py-3" style="font-size: 1.5rem;">
+                                Yes
+                            </button>
+                            <div id="yesMeta" class="mt-2 text-muted">
+                                Select to follow the "Yes" branch.
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-
         </div>
     </div>
 </div>
 
-<!-- Footer -->
-<footer class="bg-light border-top py-3 fixed-bottom text-center">
-    <span>Public Decision Tree.</span>
+<script src="/static/js/session.js"></script>
 
-    <span id="datetime"> {{.Time}} </span> 
-
-</footer>
-
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-
-    async function makeDecision(choice) {
-        try {
-            // Send decision to API
-            const res = await fetch(`/api/session/choose?decision=${choice}`);
-            const data = await res.json();
-
-            if (data.status === "complete") {
-                window.location.href = "/session/results";
-                return;
-            }
-
-            // Get updated question
-            const currentRes = await fetch("/api/session/current");
-            const currentData = await currentRes.json();
-
-            // Update UI
-            document.getElementById("question").innerText = currentData.question;
-            document.getElementById("decisionCount").innerText =
-                currentData.decisions + " decisions made";
-
-        } catch (err) {
-            console.error("Error:", err);
-        }
-    }
-
-    // Attach click handlers
-    document.getElementById("yesBtn").addEventListener("click", function(e) {
-        e.preventDefault();
-        makeDecision("yes");
-    });
-
-    document.getElementById("noBtn").addEventListener("click", function(e) {
-        e.preventDefault();
-        makeDecision("no");
-    });
-});
-</script>
-
-</body>
-</html>
+{{template "footer" .}}

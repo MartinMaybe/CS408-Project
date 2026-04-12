@@ -1,63 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Statistics</title>
+{{template "header" .}}
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-
-<!-- Navigation Bar -->
-<nav class="navbar navbar-light bg-light px-4">
-    <div class="container-fluid">
-
-        <a class="navbar-brand" href="/">Logo</a>
-
-        <div class="ms-auto">
-            <a href="/statistics" class="btn btn-outline-primary">
-                Statistics
-            </a>
-        </div>
-
-    </div>
-</nav>
-
-<!-- Center statistics content -->
 <div class="container mt-5" style="max-width:800px;">
-
-    <!-- Global Statistics -->
     <div class="border border-dark rounded p-4 bg-white mb-4">
-
         <h4 class="mb-3">Global Statistics</h4>
 
         <p class="mb-1 text-muted">Total sessions created: 1,284</p>
         <p class="mb-1 text-muted">Average decisions per session: 6.2</p>
         <p class="mb-1 text-muted">Most common answer overall: Yes (63%)</p>
-
     </div>
 
-    <!-- Top Statistics -->
     <div class="border border-dark rounded p-4 bg-white">
-
         <h4 class="mb-3">Top Statistics</h4>
 
         <p class="mb-1 text-muted">Most visited decision: "Do you like movies?"</p>
         <p class="mb-1 text-muted">Longest session recorded: 18 decisions</p>
         <p class="mb-1 text-muted">Most active contributor: User #104</p>
-
     </div>
-
 </div>
 
-<!-- Footer -->
-<footer class="bg-light border-top py-3 fixed-bottom text-center">
-    <span>Public Decision Tree.</span>
-
-    <span id="datetime"> {{.Time}} </span> 
-
-</footer>
-
-</body>
-</html>
+{{template "footer" .}}
