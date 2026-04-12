@@ -1,45 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Session</title>
+{{template "header" .}}
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="bg-light">
-
-<!-- Navigation Bar -->
-<nav class="navbar navbar-light bg-light px-4">
-    <div class="container-fluid">
-
-        <a class="navbar-brand" href="/">Logo</a>
-
-        <div class="ms-auto">
-            <a href="/statistics" class="btn btn-outline-primary">
-                Statistics
-            </a>
-        </div>
-
-    </div>
-</nav>
-
-<!-- Center page content -->
 <div class="d-flex flex-column align-items-center justify-content-center" style="height: 70vh;">
-
-<!-- Decision Counter -->
     <h6 id="decisionCount" class="mb-2 text-muted">{{.DecisionNum}} decisions made</h6>
 
-    <!-- Card container -->
     <div class="border border-dark rounded p-5 bg-white w-75" style="min-height: 250px; border-width:4px;">
         <div class="text-center mb-5">
             <h3 id="question">{{.Question}}</h3>
         </div>
 
         <div class="d-flex justify-content-between">
-
-            <!-- No Button -->
-            <div class="text-center">              
+            <div class="text-center">
                 <a href="#" id="noBtn" class="btn btn-danger btn-lg px-5 py-3" style="font-size:1.5rem;">
                     No
                 </a>
@@ -56,25 +28,15 @@
                     0% Chose this option
                 </div>
             </div>
-
         </div>
     </div>
 </div>
-
-<!-- Footer -->
-<footer class="bg-light border-top py-3 fixed-bottom text-center">
-    <span>Public Decision Tree.</span>
-
-    <span id="datetime"> {{.Time}} </span> 
-
-</footer>
 
 <script>
 document.addEventListener("DOMContentLoaded", function() {
 
     async function makeDecision(choice) {
         try {
-            // Send decision to API
             const res = await fetch(`/api/session/choose?decision=${choice}`);
             const data = await res.json();
 
@@ -83,11 +45,9 @@ document.addEventListener("DOMContentLoaded", function() {
                 return;
             }
 
-            // Get updated question
             const currentRes = await fetch("/api/session/current");
             const currentData = await currentRes.json();
 
-            // Update UI
             document.getElementById("question").innerText = currentData.question;
             document.getElementById("decisionCount").innerText =
                 currentData.decisions + " decisions made";
@@ -97,7 +57,6 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     }
 
-    // Attach click handlers
     document.getElementById("yesBtn").addEventListener("click", function(e) {
         e.preventDefault();
         makeDecision("yes");
@@ -110,5 +69,4 @@ document.addEventListener("DOMContentLoaded", function() {
 });
 </script>
 
-</body>
-</html>
+{{template "footer" .}}

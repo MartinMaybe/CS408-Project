@@ -94,7 +94,7 @@ func chooseHandler(w http.ResponseWriter, r *http.Request) {
 func landingHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("landingHandler was called")
 
-	err := templates.ExecuteTemplate(w, "landing.html", newPage())
+	err := templates.ExecuteTemplate(w, "landing.html", newPage("Public Decision Tree"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -103,7 +103,7 @@ func landingHandler(w http.ResponseWriter, r *http.Request) {
 func statisticsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("statisticsHandler was called")
 
-	err := templates.ExecuteTemplate(w, "statistics.html", newPage())
+	err := templates.ExecuteTemplate(w, "statistics.html", newPage("Statistics"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
