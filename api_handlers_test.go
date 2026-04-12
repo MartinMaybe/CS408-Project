@@ -5,119 +5,68 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strconv"
 	"testing"
 )
 
-func TestPostSessionAndGetSessionHandlers(t *testing.T) {
-	setupTestDatabaseForAPI(t)
+func TestSessionsAPIHandlerCreatesSession(t *testing.T) {
+	setupTestAppDB(t)
 
-	createRequest := httptest.NewRequest(http.MethodPost, "/api/sessions", nil)
-	createResponse := httptest.NewRecorder()
+	sessionID := createSessionViaAPI(t)
+	sessionRecord := getSessionViaAPI(t, sessionID)
 
-	sessionsAPIHandler(createResponse, createRequest)
-
-	if createResponse.Code != http.StatusCreated {
-		t.Fatalf("expected status %d, got %d", http.StatusCreated, createResponse.Code)
+	if sessionRecord.ID != sessionID {
+		t.Fatalf("expected session ID %d, got %d", sessionID, sessionRecord.ID)
 	}
-
-	var createdSession CreateSessionResponse
-	if err := json.NewDecoder(createResponse.Body).Decode(&createdSession); err != nil {
-		t.Fatalf("decode created session response: %v", err)
+	if sessionRecord.CurrentNodeID != rootNodeID {
+		t.Fatalf("expected current node ID %d, got %d", rootNodeID, sessionRecord.CurrentNodeID)
 	}
-
-	if createdSession.SessionID == 0 {
-		t.Fatalf("expected created session ID to be non-zero")
-	}
-
-	getRequest := httptest.NewRequest(
-		http.MethodGet,
-		"/api/session?session_id="+strconv.Itoa(createdSession.SessionID),
-		nil,
-	)
-	getResponse := httptest.NewRecorder()
-
-	sessionAPIHandler(getResponse, getRequest)
-
-	if getResponse.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, getResponse.Code)
-	}
-
-	var sessionRecord SessionResponse
-	if err := json.NewDecoder(getResponse.Body).Decode(&sessionRecord); err != nil {
-		t.Fatalf("decode session record: %v", err)
-	}
-
-	if sessionRecord.ID != createdSession.SessionID {
-		t.Fatalf("expected session ID %d, got %d", createdSession.SessionID, sessionRecord.ID)
-	}
-	if sessionRecord.CurrentNodeID != 1 {
-		t.Fatalf("expected current node ID 1, got %d", sessionRecord.CurrentNodeID)
+	if sessionRecord.PathLength != 0 {
+		t.Fatalf("expected path length 0, got %d", sessionRecord.PathLength)
 	}
 }
 
-func TestPostSessionHandlerUpdatesCurrentNode(t *testing.T) {
-	setupTestDatabaseForAPI(t)
+func TestSessionsAPIHandlerRejectsGet(t *testing.T) {
+	setupTestAppDB(t)
 
-	sessionID, err := createSession()
-	if err != nil {
-		t.Fatalf("create test session: %v", err)
+	request := httptest.NewRequest(http.MethodGet, "/api/sessions", nil)
+	response := httptest.NewRecorder()
+
+	sessionsAPIHandler(response, request)
+
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status %d, got %d", http.StatusMethodNotAllowed, response.Code)
+	}
+	if allowHeader := response.Header().Get("Allow"); allowHeader != http.MethodPost {
+		t.Fatalf("expected Allow header %q, got %q", http.MethodPost, allowHeader)
+	}
+}
+
+func TestSessionAPIHandlerRequiresSessionIDForGet(t *testing.T) {
+	setupTestAppDB(t)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/session", nil)
+	response := httptest.NewRecorder()
+
+	sessionAPIHandler(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, response.Code)
+	}
+}
+
+func TestSessionAPIHandlerAdvancesSessionByPort(t *testing.T) {
+	setupTestAppDB(t)
+
+	sessionID := createSessionViaAPI(t)
+	portID := getPortViaAPI(t, 1, "yes")
+	status := advanceSessionViaAPI(t, sessionID, portID)
+
+	if status.Status != "ok" {
+		t.Fatalf("expected status %q, got %q", "ok", status.Status)
 	}
 
-	portID, err := getPortIDByNodeAndKey(rootNodeID, "yes")
-	if err != nil {
-		t.Fatalf("get yes port ID: %v", err)
-	}
-
-	requestBody, err := json.Marshal(SessionAdvanceRequest{
-		SessionID: sessionID,
-		PortID:    portID,
-	})
-	if err != nil {
-		t.Fatalf("marshal update request: %v", err)
-	}
-
-	updateRequest := httptest.NewRequest(
-		http.MethodPost,
-		"/api/session",
-		bytes.NewReader(requestBody),
-	)
-	updateResponse := httptest.NewRecorder()
-
-	sessionAPIHandler(updateResponse, updateRequest)
-
-	if updateResponse.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, updateResponse.Code)
-	}
-
-	var updatedSession SessionStatusResponse
-	if err := json.NewDecoder(updateResponse.Body).Decode(&updatedSession); err != nil {
-		t.Fatalf("decode updated session response: %v", err)
-	}
-
-	if updatedSession.Status != "ok" {
-		t.Fatalf("expected status %q, got %q", "ok", updatedSession.Status)
-	}
-
-	getRequest := httptest.NewRequest(
-		http.MethodGet,
-		"/api/session?session_id="+strconv.Itoa(sessionID),
-		nil,
-	)
-	getResponse := httptest.NewRecorder()
-
-	sessionAPIHandler(getResponse, getRequest)
-
-	if getResponse.Code != http.StatusOK {
-		t.Fatalf("expected status %d, got %d", http.StatusOK, getResponse.Code)
-	}
-
-	var sessionRecord SessionResponse
-	if err := json.NewDecoder(getResponse.Body).Decode(&sessionRecord); err != nil {
-		t.Fatalf("decode session record: %v", err)
-	}
-
+	sessionRecord := getSessionViaAPI(t, sessionID)
 	if sessionRecord.CurrentNodeID != 2 {
 		t.Fatalf("expected current node ID 2, got %d", sessionRecord.CurrentNodeID)
 	}
@@ -126,8 +75,83 @@ func TestPostSessionHandlerUpdatesCurrentNode(t *testing.T) {
 	}
 }
 
-func TestGetNodeHandlerReturnsSeededNode(t *testing.T) {
-	setupTestDatabaseForAPI(t)
+func TestSessionAPIHandlerReturnsCompleteForTerminalPort(t *testing.T) {
+	setupTestAppDB(t)
+
+	sessionID := createSessionViaAPI(t)
+
+	status := advanceSessionViaAPI(t, sessionID, getPortViaAPI(t, 1, "yes"))
+	if status.Status != "ok" {
+		t.Fatalf("expected first status %q, got %q", "ok", status.Status)
+	}
+
+	status = advanceSessionViaAPI(t, sessionID, getPortViaAPI(t, 2, "yes"))
+	if status.Status != "ok" {
+		t.Fatalf("expected second status %q, got %q", "ok", status.Status)
+	}
+
+	status = advanceSessionViaAPI(t, sessionID, getPortViaAPI(t, 4, "yes"))
+	if status.Status != "complete" {
+		t.Fatalf("expected final status %q, got %q", "complete", status.Status)
+	}
+
+	sessionRecord := getSessionViaAPI(t, sessionID)
+	if sessionRecord.CurrentNodeID != 4 {
+		t.Fatalf("expected current node ID 4, got %d", sessionRecord.CurrentNodeID)
+	}
+	if sessionRecord.PathLength != 3 {
+		t.Fatalf("expected path length 3, got %d", sessionRecord.PathLength)
+	}
+}
+
+func TestSessionAPIHandlerRejectsPortFromDifferentNode(t *testing.T) {
+	setupTestAppDB(t)
+
+	sessionID := createSessionViaAPI(t)
+	portID := getPortViaAPI(t, 2, "yes")
+
+	requestBody, err := json.Marshal(SessionAdvanceRequest{
+		SessionID: sessionID,
+		PortID:    portID,
+	})
+	if err != nil {
+		t.Fatalf("marshal advance request: %v", err)
+	}
+
+	request := httptest.NewRequest(http.MethodPost, "/api/session", bytes.NewReader(requestBody))
+	response := httptest.NewRecorder()
+
+	sessionAPIHandler(response, request)
+
+	if response.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d", http.StatusConflict, response.Code)
+	}
+}
+
+func TestPortAPIHandlerReturnsPortID(t *testing.T) {
+	setupTestAppDB(t)
+
+	portID := getPortViaAPI(t, 1, "yes")
+	if portID == 0 {
+		t.Fatalf("expected non-zero port ID")
+	}
+}
+
+func TestPortAPIHandlerRequiresPortKey(t *testing.T) {
+	setupTestAppDB(t)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/port?node_id=1", nil)
+	response := httptest.NewRecorder()
+
+	portAPIHandler(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, response.Code)
+	}
+}
+
+func TestNodeAPIHandlerGetReturnsSeededNode(t *testing.T) {
+	setupTestAppDB(t)
 
 	request := httptest.NewRequest(http.MethodGet, "/api/node?node_id=1", nil)
 	response := httptest.NewRecorder()
@@ -140,7 +164,7 @@ func TestGetNodeHandlerReturnsSeededNode(t *testing.T) {
 
 	var nodeRecord NodeResponse
 	if err := json.NewDecoder(response.Body).Decode(&nodeRecord); err != nil {
-		t.Fatalf("decode node record: %v", err)
+		t.Fatalf("decode node response: %v", err)
 	}
 
 	if nodeRecord.ID != 1 {
@@ -151,10 +175,114 @@ func TestGetNodeHandlerReturnsSeededNode(t *testing.T) {
 	}
 }
 
-func TestGetNodePortHandlerReturnsPortID(t *testing.T) {
-	setupTestDatabaseForAPI(t)
+func TestNodeAPIHandlerPostCreatesNodeWithDefaultJSON(t *testing.T) {
+	setupTestAppDB(t)
 
-	request := httptest.NewRequest(http.MethodGet, "/api/port?node_id=1&port_key=yes", nil)
+	requestBody, err := json.Marshal(CreateNodeRequest{
+		Kind:   "yesno",
+		Prompt: "Is it imaginary?",
+		JSON:   "",
+	})
+	if err != nil {
+		t.Fatalf("marshal create node request: %v", err)
+	}
+
+	postRequest := httptest.NewRequest(http.MethodPost, "/api/node", bytes.NewReader(requestBody))
+	postResponse := httptest.NewRecorder()
+
+	nodeAPIHandler(postResponse, postRequest)
+
+	if postResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, postResponse.Code)
+	}
+
+	var createdNode CreateNodeResponse
+	if err := json.NewDecoder(postResponse.Body).Decode(&createdNode); err != nil {
+		t.Fatalf("decode create node response: %v", err)
+	}
+
+	getRequest := httptest.NewRequest(
+		http.MethodGet,
+		"/api/node?node_id="+strconv.Itoa(createdNode.NodeID),
+		nil,
+	)
+	getResponse := httptest.NewRecorder()
+
+	nodeAPIHandler(getResponse, getRequest)
+
+	if getResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, getResponse.Code)
+	}
+
+	var nodeRecord NodeResponse
+	if err := json.NewDecoder(getResponse.Body).Decode(&nodeRecord); err != nil {
+		t.Fatalf("decode created node response: %v", err)
+	}
+
+	if nodeRecord.Prompt != "Is it imaginary?" {
+		t.Fatalf("expected prompt %q, got %q", "Is it imaginary?", nodeRecord.Prompt)
+	}
+	if nodeRecord.JSON != "{}" {
+		t.Fatalf("expected json %q, got %q", "{}", nodeRecord.JSON)
+	}
+}
+
+func createSessionViaAPI(t *testing.T) int {
+	t.Helper()
+
+	request := httptest.NewRequest(http.MethodPost, "/api/sessions", nil)
+	response := httptest.NewRecorder()
+
+	sessionsAPIHandler(response, request)
+
+	if response.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, response.Code)
+	}
+
+	var createdSession CreateSessionResponse
+	if err := json.NewDecoder(response.Body).Decode(&createdSession); err != nil {
+		t.Fatalf("decode created session response: %v", err)
+	}
+
+	if createdSession.SessionID == 0 {
+		t.Fatalf("expected non-zero session ID")
+	}
+
+	return createdSession.SessionID
+}
+
+func getSessionViaAPI(t *testing.T, sessionID int) SessionResponse {
+	t.Helper()
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/session?session_id="+strconv.Itoa(sessionID),
+		nil,
+	)
+	response := httptest.NewRecorder()
+
+	sessionAPIHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, response.Code)
+	}
+
+	var sessionRecord SessionResponse
+	if err := json.NewDecoder(response.Body).Decode(&sessionRecord); err != nil {
+		t.Fatalf("decode session response: %v", err)
+	}
+
+	return sessionRecord
+}
+
+func getPortViaAPI(t *testing.T, nodeID int, portKey string) int {
+	t.Helper()
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/port?node_id="+strconv.Itoa(nodeID)+"&port_key="+portKey,
+		nil,
+	)
 	response := httptest.NewRecorder()
 
 	portAPIHandler(response, request)
@@ -171,66 +299,34 @@ func TestGetNodePortHandlerReturnsPortID(t *testing.T) {
 	if portResponse.PortID == 0 {
 		t.Fatalf("expected non-zero port ID")
 	}
+
+	return portResponse.PortID
 }
 
-func TestPostNodeHandlerCreatesNode(t *testing.T) {
-	setupTestDatabaseForAPI(t)
-
-	requestBody, err := json.Marshal(CreateNodeRequest{
-		Kind:   "yesno",
-		Prompt: "Is it imaginary?",
-		JSON:   "{}",
-	})
-	if err != nil {
-		t.Fatalf("marshal create node request: %v", err)
-	}
-
-	request := httptest.NewRequest(http.MethodPost, "/api/node", bytes.NewReader(requestBody))
-	response := httptest.NewRecorder()
-
-	nodeAPIHandler(response, request)
-
-	if response.Code != http.StatusCreated {
-		t.Fatalf("expected status %d, got %d", http.StatusCreated, response.Code)
-	}
-
-	var createdNode CreateNodeResponse
-	if err := json.NewDecoder(response.Body).Decode(&createdNode); err != nil {
-		t.Fatalf("decode create node response: %v", err)
-	}
-
-	if createdNode.NodeID == 0 {
-		t.Fatalf("expected created node ID to be non-zero")
-	}
-
-	nodeRecord, err := getNodeByID(createdNode.NodeID)
-	if err != nil {
-		t.Fatalf("get created node by ID: %v", err)
-	}
-
-	if nodeRecord.Prompt != "Is it imaginary?" {
-		t.Fatalf("expected prompt %q, got %q", "Is it imaginary?", nodeRecord.Prompt)
-	}
-}
-
-func setupTestDatabaseForAPI(t *testing.T) {
+func advanceSessionViaAPI(t *testing.T, sessionID int, portID int) SessionStatusResponse {
 	t.Helper()
 
-	oldDB := appDB
-	oldSession := currentSession
-
-	dbPath := filepath.Join(t.TempDir(), "api-test.db")
-	db, err := openDatabase(dbPath)
+	requestBody, err := json.Marshal(SessionAdvanceRequest{
+		SessionID: sessionID,
+		PortID:    portID,
+	})
 	if err != nil {
-		t.Fatalf("openDatabase returned error: %v", err)
+		t.Fatalf("marshal advance request: %v", err)
 	}
 
-	appDB = db
-	currentSession = Session{}
+	request := httptest.NewRequest(http.MethodPost, "/api/session", bytes.NewReader(requestBody))
+	response := httptest.NewRecorder()
 
-	t.Cleanup(func() {
-		currentSession = oldSession
-		appDB = oldDB
-		db.Close()
-	})
+	sessionAPIHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, response.Code)
+	}
+
+	var statusResponse SessionStatusResponse
+	if err := json.NewDecoder(response.Body).Decode(&statusResponse); err != nil {
+		t.Fatalf("decode session status response: %v", err)
+	}
+
+	return statusResponse
 }
