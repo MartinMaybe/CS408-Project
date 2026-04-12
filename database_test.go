@@ -109,6 +109,22 @@ func TestCreateNodePersistsNode(t *testing.T) {
 	if nodeRecord.JSON != "{}" {
 		t.Fatalf("expected json %q, got %q", "{}", nodeRecord.JSON)
 	}
+
+	yesPortID, err := getPortIDByNodeAndKey(nodeID, "yes")
+	if err != nil {
+		t.Fatalf("get yes port for created node: %v", err)
+	}
+	if yesPortID == 0 {
+		t.Fatalf("expected non-zero yes port ID for created node")
+	}
+
+	noPortID, err := getPortIDByNodeAndKey(nodeID, "no")
+	if err != nil {
+		t.Fatalf("get no port for created node: %v", err)
+	}
+	if noPortID == 0 {
+		t.Fatalf("expected non-zero no port ID for created node")
+	}
 }
 
 func TestGetPortIDByNodeAndKeyReturnsSeededPort(t *testing.T) {
@@ -258,6 +274,51 @@ func TestAdvanceSessionByPortRejectsPortFromDifferentNode(t *testing.T) {
 	}
 	if sessionRecord.PathLength != 0 {
 		t.Fatalf("expected path length 0, got %d", sessionRecord.PathLength)
+	}
+}
+
+func TestAttachPortToNodeConnectsDanglingPort(t *testing.T) {
+	setupTestAppDB(t)
+
+	nodeID, err := createNode("yesno", "Is it imaginary?", "{}")
+	if err != nil {
+		t.Fatalf("createNode returned error: %v", err)
+	}
+
+	portID, err := getPortIDByNodeAndKey(4, "yes")
+	if err != nil {
+		t.Fatalf("get dangling port by key: %v", err)
+	}
+
+	if err := attachPortToNode(portID, nodeID); err != nil {
+		t.Fatalf("attachPortToNode returned error: %v", err)
+	}
+
+	var attachedNodeID int
+	if err := appDB.QueryRow(`SELECT to_node_id FROM ports WHERE id = ?`, portID).Scan(&attachedNodeID); err != nil {
+		t.Fatalf("query attached port target: %v", err)
+	}
+	if attachedNodeID != nodeID {
+		t.Fatalf("expected attached node ID %d, got %d", nodeID, attachedNodeID)
+	}
+}
+
+func TestAttachPortToNodeRejectsAlreadyConnectedPort(t *testing.T) {
+	setupTestAppDB(t)
+
+	nodeID, err := createNode("yesno", "Is it imaginary?", "{}")
+	if err != nil {
+		t.Fatalf("createNode returned error: %v", err)
+	}
+
+	portID, err := getPortIDByNodeAndKey(1, "yes")
+	if err != nil {
+		t.Fatalf("get connected port by key: %v", err)
+	}
+
+	err = attachPortToNode(portID, nodeID)
+	if !errors.Is(err, ErrPortAlreadyConnected) {
+		t.Fatalf("expected ErrPortAlreadyConnected, got %v", err)
 	}
 }
 

@@ -137,6 +137,81 @@ func TestPortAPIHandlerReturnsPortID(t *testing.T) {
 	}
 }
 
+func TestPortAPIHandlerPostAttachesDanglingPort(t *testing.T) {
+	setupTestAppDB(t)
+
+	nodeRequestBody, err := json.Marshal(CreateNodeRequest{
+		Kind:   "yesno",
+		Prompt: "Is it imaginary?",
+		JSON:   "{}",
+	})
+	if err != nil {
+		t.Fatalf("marshal create node request: %v", err)
+	}
+
+	nodeRequest := httptest.NewRequest(http.MethodPost, "/api/node", bytes.NewReader(nodeRequestBody))
+	nodeResponse := httptest.NewRecorder()
+
+	nodeAPIHandler(nodeResponse, nodeRequest)
+
+	if nodeResponse.Code != http.StatusCreated {
+		t.Fatalf("expected status %d, got %d", http.StatusCreated, nodeResponse.Code)
+	}
+
+	var createdNode CreateNodeResponse
+	if err := json.NewDecoder(nodeResponse.Body).Decode(&createdNode); err != nil {
+		t.Fatalf("decode create node response: %v", err)
+	}
+
+	portID := getPortViaAPI(t, 4, "yes")
+
+	attachRequestBody, err := json.Marshal(PortAttachRequest{
+		PortID:   portID,
+		ToNodeID: createdNode.NodeID,
+	})
+	if err != nil {
+		t.Fatalf("marshal attach port request: %v", err)
+	}
+
+	attachRequest := httptest.NewRequest(http.MethodPost, "/api/port", bytes.NewReader(attachRequestBody))
+	attachResponse := httptest.NewRecorder()
+
+	portAPIHandler(attachResponse, attachRequest)
+
+	if attachResponse.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, attachResponse.Code)
+	}
+
+	var attachStatus PortStatusResponse
+	if err := json.NewDecoder(attachResponse.Body).Decode(&attachStatus); err != nil {
+		t.Fatalf("decode attach status response: %v", err)
+	}
+	if attachStatus.Status != "ok" {
+		t.Fatalf("expected status %q, got %q", "ok", attachStatus.Status)
+	}
+
+	sessionID := createSessionViaAPI(t)
+	status := advanceSessionViaAPI(t, sessionID, getPortViaAPI(t, 1, "yes"))
+	if status.Status != "ok" {
+		t.Fatalf("expected first advance status %q, got %q", "ok", status.Status)
+	}
+
+	status = advanceSessionViaAPI(t, sessionID, getPortViaAPI(t, 2, "yes"))
+	if status.Status != "ok" {
+		t.Fatalf("expected second advance status %q, got %q", "ok", status.Status)
+	}
+
+	status = advanceSessionViaAPI(t, sessionID, portID)
+	if status.Status != "ok" {
+		t.Fatalf("expected attached branch status %q, got %q", "ok", status.Status)
+	}
+
+	sessionRecord := getSessionViaAPI(t, sessionID)
+	if sessionRecord.CurrentNodeID != createdNode.NodeID {
+		t.Fatalf("expected current node ID %d, got %d", createdNode.NodeID, sessionRecord.CurrentNodeID)
+	}
+}
+
 func TestPortAPIHandlerRequiresPortKey(t *testing.T) {
 	setupTestAppDB(t)
 
@@ -175,13 +250,13 @@ func TestNodeAPIHandlerGetReturnsSeededNode(t *testing.T) {
 	}
 }
 
-func TestNodeAPIHandlerPostCreatesNodeWithDefaultJSON(t *testing.T) {
+func TestNodeAPIHandlerPostCreatesNodeWithDefaultConfig(t *testing.T) {
 	setupTestAppDB(t)
 
 	requestBody, err := json.Marshal(CreateNodeRequest{
 		Kind:   "yesno",
 		Prompt: "Is it imaginary?",
-		JSON:   "",
+		JSON:   "{}",
 	})
 	if err != nil {
 		t.Fatalf("marshal create node request: %v", err)
@@ -222,8 +297,10 @@ func TestNodeAPIHandlerPostCreatesNodeWithDefaultJSON(t *testing.T) {
 	if nodeRecord.Prompt != "Is it imaginary?" {
 		t.Fatalf("expected prompt %q, got %q", "Is it imaginary?", nodeRecord.Prompt)
 	}
-	if nodeRecord.JSON != "{}" {
-		t.Fatalf("expected json %q, got %q", "{}", nodeRecord.JSON)
+
+	yesPortID := getPortViaAPI(t, createdNode.NodeID, "yes")
+	if yesPortID == 0 {
+		t.Fatalf("expected non-zero yes port ID for created node")
 	}
 }
 

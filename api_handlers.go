@@ -23,7 +23,6 @@ type NodeResponse struct {
 	ID     int    `json:"id"`
 	Kind   string `json:"kind"`
 	Prompt string `json:"prompt"`
-	JSON   string `json:"json"`
 }
 
 type CreateSessionResponse struct {
@@ -41,6 +40,15 @@ type SessionStatusResponse struct {
 
 type PortLookupResponse struct {
 	PortID int `json:"port_id"`
+}
+
+type PortAttachRequest struct {
+	PortID   int `json:"port_id"`
+	ToNodeID int `json:"to_node_id"`
+}
+
+type PortStatusResponse struct {
+	Status string `json:"status"`
 }
 
 type CreateNodeRequest struct {
@@ -78,8 +86,10 @@ func portAPIHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		getPortAPIHandler(w, r)
+	case http.MethodPost:
+		postPortAPIHandler(w, r)
 	default:
-		methodNotAllowed(w, http.MethodGet)
+		methodNotAllowed(w, "GET, POST")
 	}
 }
 
@@ -112,9 +122,6 @@ func postNodeAPIHandler(w http.ResponseWriter, r *http.Request) {
 	if request.Prompt == "" {
 		http.Error(w, "prompt is required", http.StatusBadRequest)
 		return
-	}
-	if request.JSON == "" {
-		request.JSON = "{}"
 	}
 
 	nodeID, err := createNode(request.Kind, request.Prompt, request.JSON)
@@ -185,6 +192,44 @@ func postSessionAPIHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, SessionStatusResponse{Status: status})
+}
+
+func postPortAPIHandler(w http.ResponseWriter, r *http.Request) {
+	var request PortAttachRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	if request.PortID <= 0 {
+		http.Error(w, "port_id must be a positive integer", http.StatusBadRequest)
+		return
+	}
+	if request.ToNodeID <= 0 {
+		http.Error(w, "to_node_id must be a positive integer", http.StatusBadRequest)
+		return
+	}
+
+	err := attachPortToNode(request.PortID, request.ToNodeID)
+	if errors.Is(err, ErrPortNotFound) {
+		http.Error(w, "Port not found", http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, ErrNodeNotFound) {
+		http.Error(w, "Node not found", http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, ErrPortAlreadyConnected) {
+		http.Error(w, "Port already connected", http.StatusConflict)
+		return
+	}
+	if err != nil {
+		log.Println("attach port error:", err)
+		http.Error(w, "DB update error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, PortStatusResponse{Status: "ok"})
 }
 
 /* get endpoint handlers */
@@ -286,7 +331,6 @@ func newNodeResponse(row nodeRow) NodeResponse {
 		ID:     row.ID,
 		Kind:   row.Kind,
 		Prompt: row.Prompt,
-		JSON:   row.JSON,
 	}
 }
 

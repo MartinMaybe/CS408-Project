@@ -23,6 +23,7 @@ var (
 	ErrPortNotFound               = errors.New("port not found")
 	ErrNullCurrentNode            = errors.New("session current_node_id is null")
 	ErrPortDoesNotBelongToSession = errors.New("port does not belong to current session node")
+	ErrPortAlreadyConnected       = errors.New("port already connected")
 )
 
 type sessionRow struct {
@@ -226,7 +227,13 @@ func createSession() (int, error) {
 }
 
 func createNode(kind string, prompt string, jsonText string) (int, error) {
-	result, err := appDB.Exec(`
+	tx, err := appDB.Begin()
+	if err != nil {
+		return 0, fmt.Errorf("begin create node transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	result, err := tx.Exec(`
 		INSERT INTO nodes (kind, prompt, json)
 		VALUES (?, ?, ?)`,
 		kind,
@@ -242,7 +249,64 @@ func createNode(kind string, prompt string, jsonText string) (int, error) {
 		return 0, fmt.Errorf("read created node ID: %w", err)
 	}
 
-	return int(id), nil
+	nodeID := int(id)
+	if err := initializeNodePorts(tx, nodeID, kind); err != nil {
+		return 0, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return 0, fmt.Errorf("commit create node transaction: %w", err)
+	}
+
+	return nodeID, nil
+}
+
+func attachPortToNode(portID int, toNodeID int) error {
+	exists, err := nodeExists(toNodeID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return ErrNodeNotFound
+	}
+
+	result, err := appDB.Exec(`
+		UPDATE ports
+		SET to_node_id = ?
+		WHERE id = ? AND to_node_id IS NULL`,
+		toNodeID,
+		portID,
+	)
+	if err != nil {
+		return fmt.Errorf("attach port to node: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("read attached port rows affected: %w", err)
+	}
+	if rowsAffected == 1 {
+		return nil
+	}
+
+	var existingTarget sql.NullInt64
+	err = appDB.QueryRow(`
+		SELECT to_node_id
+		FROM ports
+		WHERE id = ?`,
+		portID,
+	).Scan(&existingTarget)
+	if err == sql.ErrNoRows {
+		return ErrPortNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("check existing port attachment: %w", err)
+	}
+	if existingTarget.Valid {
+		return ErrPortAlreadyConnected
+	}
+
+	return ErrPortNotFound
 }
 
 func advanceSessionByPort(sessionID int, portID int) (string, error) {
@@ -436,6 +500,25 @@ func getPortIDByNodeAndKey(nodeID int, portKey string) (int, error) {
 	}
 
 	return portID, nil
+}
+
+func initializeNodePorts(tx *sql.Tx, nodeID int, kind string) error {
+	switch kind {
+	case "yesno":
+		_, err := tx.Exec(`
+			INSERT INTO ports (from_node_id, to_node_id, port_key)
+			VALUES
+				(?, NULL, 'yes'),
+				(?, NULL, 'no')`,
+			nodeID,
+			nodeID,
+		)
+		if err != nil {
+			return fmt.Errorf("initialize yesno ports: %w", err)
+		}
+	}
+
+	return nil
 }
 
 func nodeExists(nodeID int) (bool, error) {

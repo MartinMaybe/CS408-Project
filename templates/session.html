@@ -32,6 +32,51 @@
                     This branch currently ends here. The next question can be attached here in the next checkpoint.
                 </div>
 
+                <div id="resultsPanel" class="card bg-light border-warning d-none mb-4">
+                    <div class="card-body">
+                        <h2 class="h5 card-title">Session Results</h2>
+                        <p id="resultsSummary" class="card-text text-muted mb-0">
+                            The current branch ends here.
+                        </p>
+                    </div>
+                </div>
+
+                <div id="creationPanel" class="card border-secondary d-none mb-4">
+                    <div class="card-body">
+                        <h2 class="h5 card-title">Create New Question</h2>
+                        <p class="card-text text-muted">
+                            Add a follow-up question to this branch. This checkpoint currently creates yes/no nodes so the tree remains traversable with the existing session UI.
+                        </p>
+
+                        <form id="creationForm" class="row g-3">
+                            <div class="col-12">
+                                <label for="createKind" class="form-label">Question Type</label>
+                                <select id="createKind" class="form-select">
+                                    <option value="yesno">Yes / No</option>
+                                </select>
+                            </div>
+
+                            <div class="col-12">
+                                <label for="createPrompt" class="form-label">Question Prompt</label>
+                                <input
+                                    id="createPrompt"
+                                    type="text"
+                                    class="form-control"
+                                    placeholder="Example: Is it larger than a basketball?"
+                                    maxlength="255"
+                                    required
+                                >
+                            </div>
+
+                            <div class="col-12 d-flex justify-content-end">
+                                <button type="submit" id="createSubmitBtn" class="btn btn-primary">
+                                    Attach Question
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
                 <div id="decisionPanel" class="row g-4">
                     <div class="col-md-6">
                         <div class="text-center">
