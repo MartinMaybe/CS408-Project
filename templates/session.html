@@ -2,71 +2,64 @@
 <html lang="en">
 {{template "header" .}}
 
-<div class="d-flex flex-column align-items-center justify-content-center" style="height: 70vh;">
-    <h6 id="decisionCount" class="mb-2 text-muted">0 decisions made</h6>
-
-    <div class="border border-dark rounded p-5 bg-white w-75" style="min-height: 250px; border-width:4px;">
-        <div class="text-center mb-5">
-            <h3 id="question">Loading session...</h3>
-        </div>
-
-        <div class="d-flex justify-content-between">
-            <div class="text-center">
-                <a href="#" id="noBtn" class="btn btn-danger btn-lg px-5 py-3" style="font-size:1.5rem;">
-                    No
-                </a>
-                <div class="mt-2 text-muted">
-                    0% Chose this option
-                </div>
+<div class="container py-5">
+    <div class="mx-auto" style="max-width: 900px;">
+        <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3 mb-4">
+            <div>
+                <p id="sessionMeta" class="text-muted mb-1">Preparing session...</p>
+                <h1 class="h3 mb-0">Decision Session</h1>
             </div>
 
-            <div class="text-center">
-                <a href="#" id="yesBtn" class="btn btn-success btn-lg px-5 py-3" style="font-size:1.5rem;">
-                    Yes
-                </a>
-                <div class="mt-2 text-muted">
-                    0% Chose this option
+            <button type="button" id="restartBtn" class="btn btn-outline-secondary">
+                Start New Session
+            </button>
+        </div>
+
+        <div id="sessionAlert" class="alert d-none" role="alert"></div>
+
+        <div class="card border-dark shadow-sm">
+            <div class="card-body p-4 p-lg-5">
+                <div class="text-center mb-4">
+                    <div id="loadingSpinner" class="spinner-border text-primary mb-3" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+
+                    <h3 id="question" class="mb-2">Loading session...</h3>
+                    <p id="decisionCount" class="text-muted mb-0">0 decisions made</p>
+                </div>
+
+                <div id="completionPanel" class="alert alert-warning d-none" role="alert">
+                    This branch currently ends here. The next question can be attached here in the next checkpoint.
+                </div>
+
+                <div id="decisionPanel" class="row g-4">
+                    <div class="col-md-6">
+                        <div class="text-center">
+                            <button type="button" id="noBtn" class="btn btn-danger btn-lg w-100 py-3" style="font-size: 1.5rem;">
+                                No
+                            </button>
+                            <div id="noMeta" class="mt-2 text-muted">
+                                Select to follow the "No" branch.
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="text-center">
+                            <button type="button" id="yesBtn" class="btn btn-success btn-lg w-100 py-3" style="font-size: 1.5rem;">
+                                Yes
+                            </button>
+                            <div id="yesMeta" class="mt-2 text-muted">
+                                Select to follow the "Yes" branch.
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
 
-<script>
-document.addEventListener("DOMContentLoaded", function() {
-
-    async function makeDecision(choice) {
-        try {
-            const res = await fetch(`/api/session/choose?decision=${choice}`);
-            const data = await res.json();
-
-            if (data.status === "complete") {
-                window.location.href = "/session/results";
-                return;
-            }
-
-            const currentRes = await fetch("/api/session/current");
-            const currentData = await currentRes.json();
-
-            document.getElementById("question").innerText = currentData.question;
-            document.getElementById("decisionCount").innerText =
-                currentData.decisions + " decisions made";
-
-        } catch (err) {
-            console.error("Error:", err);
-        }
-    }
-
-    document.getElementById("yesBtn").addEventListener("click", function(e) {
-        e.preventDefault();
-        makeDecision("yes");
-    });
-
-    document.getElementById("noBtn").addEventListener("click", function(e) {
-        e.preventDefault();
-        makeDecision("no");
-    });
-});
-</script>
+<script src="/static/js/session.js"></script>
 
 {{template "footer" .}}

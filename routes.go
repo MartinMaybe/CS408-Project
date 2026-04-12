@@ -3,6 +3,7 @@ package main
 import "net/http"
 
 func registerRoutes() {
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 	http.HandleFunc("/", landingHandler)
 	http.HandleFunc("/session", sessionHandler)
 	http.HandleFunc("/statistics", statisticsHandler)
