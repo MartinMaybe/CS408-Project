@@ -18,10 +18,11 @@ const rootNodeID = 1
 var appDB *sql.DB
 
 var (
-	ErrSessionNotFound = errors.New("session not found")
-	ErrNodeNotFound    = errors.New("node not found")
-	ErrPortNotFound    = errors.New("port not found")
-	ErrNullCurrentNode = errors.New("session current_node_id is null")
+	ErrSessionNotFound            = errors.New("session not found")
+	ErrNodeNotFound               = errors.New("node not found")
+	ErrPortNotFound               = errors.New("port not found")
+	ErrNullCurrentNode            = errors.New("session current_node_id is null")
+	ErrPortDoesNotBelongToSession = errors.New("port does not belong to current session node")
 )
 
 type sessionRow struct {
@@ -222,6 +223,115 @@ func createSession() (int, error) {
 	}
 
 	return int(id), nil
+}
+
+func createNode(kind string, prompt string, jsonText string) (int, error) {
+	result, err := appDB.Exec(`
+		INSERT INTO nodes (kind, prompt, json)
+		VALUES (?, ?, ?)`,
+		kind,
+		prompt,
+		jsonText,
+	)
+	if err != nil {
+		return 0, fmt.Errorf("create node: %w", err)
+	}
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("read created node ID: %w", err)
+	}
+
+	return int(id), nil
+}
+
+func advanceSessionByPort(sessionID int, portID int) (string, error) {
+	tx, err := appDB.Begin()
+	if err != nil {
+		return "", fmt.Errorf("begin session advance transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	var currentNodeID sql.NullInt64
+	err = tx.QueryRow(`
+		SELECT current_node_id
+		FROM sessions
+		WHERE id = ?`,
+		sessionID,
+	).Scan(&currentNodeID)
+	if err == sql.ErrNoRows {
+		return "", ErrSessionNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("get session current node: %w", err)
+	}
+	if !currentNodeID.Valid {
+		return "", ErrNullCurrentNode
+	}
+
+	var (
+		fromNodeID int
+		toNodeID   sql.NullInt64
+	)
+	err = tx.QueryRow(`
+		SELECT from_node_id, to_node_id
+		FROM ports
+		WHERE id = ?`,
+		portID,
+	).Scan(&fromNodeID, &toNodeID)
+	if err == sql.ErrNoRows {
+		return "", ErrPortNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("get port by ID: %w", err)
+	}
+
+	if fromNodeID != int(currentNodeID.Int64) {
+		return "", ErrPortDoesNotBelongToSession
+	}
+
+	_, err = tx.Exec(`
+		UPDATE ports
+		SET taken_count = taken_count + 1
+		WHERE id = ?`,
+		portID,
+	)
+	if err != nil {
+		return "", fmt.Errorf("increment port taken_count: %w", err)
+	}
+
+	if !toNodeID.Valid {
+		_, err = tx.Exec(`
+			UPDATE sessions
+			SET path_length = path_length + 1, updated_at = CURRENT_TIMESTAMP
+			WHERE id = ?`,
+			sessionID,
+		)
+		if err != nil {
+			return "", fmt.Errorf("update terminal session progress: %w", err)
+		}
+		if err := tx.Commit(); err != nil {
+			return "", fmt.Errorf("commit terminal session advance: %w", err)
+		}
+		return "complete", nil
+	}
+
+	_, err = tx.Exec(`
+		UPDATE sessions
+		SET current_node_id = ?, path_length = path_length + 1, updated_at = CURRENT_TIMESTAMP
+		WHERE id = ?`,
+		int(toNodeID.Int64),
+		sessionID,
+	)
+	if err != nil {
+		return "", fmt.Errorf("advance session current node by port: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("commit session advance: %w", err)
+	}
+
+	return "ok", nil
 }
 
 func updateSessionCurrentNode(sessionID int, nodeID int) error {

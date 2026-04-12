@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+/* requests and response structs */
 type SessionResponse struct {
 	ID              int    `json:"id"`
 	CurrentNodeID   int    `json:"current_node_id"`
@@ -26,87 +27,107 @@ type NodeResponse struct {
 }
 
 type CreateSessionResponse struct {
-	SessionID     int `json:"session_id"`
-	CurrentNodeID int `json:"current_node_id"`
+	SessionID int `json:"session_id"`
 }
 
-type UpdateSessionCurrentRequest struct {
-	NodeID int `json:"node_id"`
+type SessionAdvanceRequest struct {
+	SessionID int `json:"session_id"`
+	PortID    int `json:"port_id"`
 }
 
-type UpdateSessionCurrentResponse struct {
-	SessionID     int `json:"session_id"`
-	CurrentNodeID int `json:"current_node_id"`
+type SessionStatusResponse struct {
+	Status string `json:"status"`
 }
 
 type PortLookupResponse struct {
 	PortID int `json:"port_id"`
 }
 
-func sessionsAPIHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		methodNotAllowed(w, http.MethodPost)
-		return
-	}
+type CreateNodeRequest struct {
+	Kind   string `json:"kind"`
+	Prompt string `json:"prompt"`
+	JSON   string `json:"json"`
+}
 
-	postSessionHandler(w, r)
+type CreateNodeResponse struct {
+	NodeID int `json:"node_id"`
+}
+
+/* Broad route handlers*/
+func sessionsAPIHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost:
+		postSessionsAPIHandler(w, r)
+	default:
+		methodNotAllowed(w, http.MethodPost)
+	}
 }
 
 func sessionAPIHandler(w http.ResponseWriter, r *http.Request) {
-	segments := apiPathSegments(r.URL.Path, "/api/sessions/")
-	if len(segments) == 0 {
-		http.NotFound(w, r)
-		return
-	}
-
-	sessionID, err := strconv.Atoi(segments[0])
-	if err != nil {
-		http.Error(w, "Invalid session ID", http.StatusBadRequest)
-		return
-	}
-
-	switch {
-	case len(segments) == 1 && r.Method == http.MethodGet:
-		getSessionHandler(w, r, sessionID)
-	case len(segments) == 2 && segments[1] == "current" && r.Method == http.MethodPost:
-		postSessionCurrentHandler(w, r, sessionID)
-	case len(segments) == 1:
-		methodNotAllowed(w, http.MethodGet)
-	case len(segments) == 2 && segments[1] == "current":
-		methodNotAllowed(w, http.MethodPost)
+	switch r.Method {
+	case http.MethodGet:
+		getSessionAPIHandler(w, r)
+	case http.MethodPost:
+		postSessionAPIHandler(w, r)
 	default:
-		http.NotFound(w, r)
+		methodNotAllowed(w, "GET, POST")
+	}
+}
+
+func portAPIHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		getPortAPIHandler(w, r)
+	default:
+		methodNotAllowed(w, http.MethodGet)
 	}
 }
 
 func nodeAPIHandler(w http.ResponseWriter, r *http.Request) {
-	segments := apiPathSegments(r.URL.Path, "/api/nodes/")
-	if len(segments) == 0 {
-		http.NotFound(w, r)
-		return
-	}
-
-	nodeID, err := strconv.Atoi(segments[0])
-	if err != nil {
-		http.Error(w, "Invalid node ID", http.StatusBadRequest)
-		return
-	}
-
-	switch {
-	case len(segments) == 1 && r.Method == http.MethodGet:
-		getNodeHandler(w, r, nodeID)
-	case len(segments) == 3 && segments[1] == "ports" && r.Method == http.MethodGet:
-		getNodePortHandler(w, r, nodeID, segments[2])
-	case len(segments) == 1:
-		methodNotAllowed(w, http.MethodGet)
-	case len(segments) == 3 && segments[1] == "ports":
-		methodNotAllowed(w, http.MethodGet)
+	switch r.Method {
+	case http.MethodGet:
+		getNodeAPIHandler(w, r)
+	case http.MethodPost:
+		postNodeAPIHandler(w, r)
 	default:
-		http.NotFound(w, r)
+		methodNotAllowed(w, "GET, POST")
 	}
 }
 
-func postSessionHandler(w http.ResponseWriter, r *http.Request) {
+/* post endpoint handlers */
+func postNodeAPIHandler(w http.ResponseWriter, r *http.Request) {
+	var request CreateNodeRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	request.Kind = strings.TrimSpace(request.Kind)
+	request.Prompt = strings.TrimSpace(request.Prompt)
+	request.JSON = strings.TrimSpace(request.JSON)
+	if request.Kind == "" {
+		http.Error(w, "kind is required", http.StatusBadRequest)
+		return
+	}
+	if request.Prompt == "" {
+		http.Error(w, "prompt is required", http.StatusBadRequest)
+		return
+	}
+	if request.JSON == "" {
+		request.JSON = "{}"
+	}
+
+	nodeID, err := createNode(request.Kind, request.Prompt, request.JSON)
+	if err != nil {
+		log.Println("create node error:", err)
+		http.Error(w, "DB insert error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, CreateNodeResponse{NodeID: nodeID})
+}
+
+func postSessionsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	sessionID, err := createSession()
 	if err != nil {
 		log.Println("create session error:", err)
@@ -124,40 +145,56 @@ func postSessionHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, newCreateSessionResponse(createdSession))
 }
 
-func postSessionCurrentHandler(w http.ResponseWriter, r *http.Request, sessionID int) {
-	var request UpdateSessionCurrentRequest
+func postSessionAPIHandler(w http.ResponseWriter, r *http.Request) {
+	var request SessionAdvanceRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 		return
 	}
 
-	if request.NodeID <= 0 {
-		http.Error(w, "node_id must be a positive integer", http.StatusBadRequest)
+	if request.SessionID <= 0 {
+		http.Error(w, "session_id must be a positive integer", http.StatusBadRequest)
+		return
+	}
+	if request.PortID <= 0 {
+		http.Error(w, "port_id must be a positive integer", http.StatusBadRequest)
 		return
 	}
 
-	err := updateSessionCurrentNode(sessionID, request.NodeID)
-	if errors.Is(err, ErrNodeNotFound) {
-		http.Error(w, "Node not found", http.StatusNotFound)
-		return
-	}
+	status, err := advanceSessionByPort(request.SessionID, request.PortID)
 	if errors.Is(err, ErrSessionNotFound) {
 		http.Error(w, "Session not found", http.StatusNotFound)
 		return
 	}
+	if errors.Is(err, ErrPortNotFound) {
+		http.Error(w, "Port not found", http.StatusNotFound)
+		return
+	}
+	if errors.Is(err, ErrPortDoesNotBelongToSession) {
+		http.Error(w, "Port does not belong to current session node", http.StatusConflict)
+		return
+	}
+	if errors.Is(err, ErrNullCurrentNode) {
+		http.Error(w, "Session has no current node", http.StatusConflict)
+		return
+	}
 	if err != nil {
-		log.Println("update session current node error:", err)
+		log.Println("advance session by port error:", err)
 		http.Error(w, "DB update error", http.StatusInternalServerError)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, UpdateSessionCurrentResponse{
-		SessionID:     sessionID,
-		CurrentNodeID: request.NodeID,
-	})
+	writeJSON(w, http.StatusOK, SessionStatusResponse{Status: status})
 }
 
-func getSessionHandler(w http.ResponseWriter, r *http.Request, sessionID int) {
+/* get endpoint handlers */
+func getSessionAPIHandler(w http.ResponseWriter, r *http.Request) {
+	sessionID, err := requiredQueryInt(r, "session_id")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	record, err := getSessionByID(sessionID)
 	if errors.Is(err, ErrSessionNotFound) {
 		http.Error(w, "Session not found", http.StatusNotFound)
@@ -172,7 +209,40 @@ func getSessionHandler(w http.ResponseWriter, r *http.Request, sessionID int) {
 	writeJSON(w, http.StatusOK, newSessionResponse(record))
 }
 
-func getNodeHandler(w http.ResponseWriter, r *http.Request, nodeID int) {
+func getPortAPIHandler(w http.ResponseWriter, r *http.Request) {
+	nodeID, err := requiredQueryInt(r, "node_id")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	portKey := strings.TrimSpace(r.URL.Query().Get("port_key"))
+	if portKey == "" {
+		http.Error(w, "port_key is required", http.StatusBadRequest)
+		return
+	}
+
+	portID, err := getPortIDByNodeAndKey(nodeID, portKey)
+	if errors.Is(err, ErrPortNotFound) {
+		http.Error(w, "Port not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Println("get port error:", err)
+		http.Error(w, "DB query error", http.StatusInternalServerError)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, PortLookupResponse{PortID: portID})
+}
+
+func getNodeAPIHandler(w http.ResponseWriter, r *http.Request) {
+	nodeID, err := requiredQueryInt(r, "node_id")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	record, err := getNodeByID(nodeID)
 	if errors.Is(err, ErrNodeNotFound) {
 		http.Error(w, "Node not found", http.StatusNotFound)
@@ -187,21 +257,7 @@ func getNodeHandler(w http.ResponseWriter, r *http.Request, nodeID int) {
 	writeJSON(w, http.StatusOK, newNodeResponse(record))
 }
 
-func getNodePortHandler(w http.ResponseWriter, r *http.Request, nodeID int, portKey string) {
-	portID, err := getPortIDByNodeAndKey(nodeID, portKey)
-	if errors.Is(err, ErrPortNotFound) {
-		http.Error(w, "Port not found", http.StatusNotFound)
-		return
-	}
-	if err != nil {
-		log.Println("get node port error:", err)
-		http.Error(w, "DB query error", http.StatusInternalServerError)
-		return
-	}
-
-	writeJSON(w, http.StatusOK, PortLookupResponse{PortID: portID})
-}
-
+/* helpers */
 func writeJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
@@ -210,8 +266,7 @@ func writeJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
 
 func newCreateSessionResponse(row sessionRow) CreateSessionResponse {
 	return CreateSessionResponse{
-		SessionID:     row.ID,
-		CurrentNodeID: row.CurrentNodeID,
+		SessionID: row.ID,
 	}
 }
 
@@ -240,12 +295,19 @@ func methodNotAllowed(w http.ResponseWriter, allowedMethod string) {
 	http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 }
 
-func apiPathSegments(path string, prefix string) []string {
-	trimmedPath := strings.TrimPrefix(path, prefix)
-	trimmedPath = strings.Trim(trimmedPath, "/")
-	if trimmedPath == "" {
-		return nil
+func requiredQueryInt(r *http.Request, key string) (int, error) {
+	value := strings.TrimSpace(r.URL.Query().Get(key))
+	if value == "" {
+		return 0, errors.New(key + " is required")
 	}
 
-	return strings.Split(trimmedPath, "/")
+	parsedValue, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, errors.New(key + " must be an integer")
+	}
+	if parsedValue <= 0 {
+		return 0, errors.New(key + " must be a positive integer")
+	}
+
+	return parsedValue, nil
 }
