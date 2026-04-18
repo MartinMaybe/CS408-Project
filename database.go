@@ -316,13 +316,18 @@ func advanceSessionByPort(sessionID int, portID int) (string, error) {
 	}
 	defer tx.Rollback()
 
-	var currentNodeID sql.NullInt64
+	// get current session state
+	var (
+		currentNodeID   sql.NullInt64
+		pathLength      int
+		pathFingerprint string
+	)
 	err = tx.QueryRow(`
-		SELECT current_node_id
+		SELECT current_node_id, path_Length, path_fingerprint
 		FROM sessions
 		WHERE id = ?`,
 		sessionID,
-	).Scan(&currentNodeID)
+	).Scan(&currentNodeID, &pathLength, &pathFingerprint)
 	if err == sql.ErrNoRows {
 		return "", ErrSessionNotFound
 	}
@@ -364,11 +369,30 @@ func advanceSessionByPort(sessionID int, portID int) (string, error) {
 		return "", fmt.Errorf("increment port taken_count: %w", err)
 	}
 
+	newFingerprint := rollFingerprint(pathFingerprint, portID)
+	newIndex := pathLength
+
+	// log to session_history
+	_, err = tx.Exec(`
+		INSERT INTO session_history (session_id, session_index, node_id, port_id)
+		VALUES (?, ?, ?, ?)`,
+		sessionID,
+		newIndex,
+		int(currentNodeID.Int64),
+		portID,
+	)
+	if err != nil {
+		return "", fmt.Errorf("insert session history: %w", err)
+	}
+
 	if !toNodeID.Valid {
 		_, err = tx.Exec(`
 			UPDATE sessions
-			SET path_length = path_length + 1, updated_at = CURRENT_TIMESTAMP
+			SET path_length = path_length + 1, 
+				path_fingerprint = ?,
+				updated_at = CURRENT_TIMESTAMP
 			WHERE id = ?`,
+			newFingerprint,
 			sessionID,
 		)
 		if err != nil {
@@ -382,9 +406,13 @@ func advanceSessionByPort(sessionID int, portID int) (string, error) {
 
 	_, err = tx.Exec(`
 		UPDATE sessions
-		SET current_node_id = ?, path_length = path_length + 1, updated_at = CURRENT_TIMESTAMP
+		SET current_node_id = ?, 
+			path_length = path_length + 1, 
+			path_fingerprint = ?,
+			updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?`,
 		int(toNodeID.Int64),
+		newFingerprint,
 		sessionID,
 	)
 	if err != nil {
@@ -529,4 +557,16 @@ func nodeExists(nodeID int) (bool, error) {
 	}
 
 	return exists == 1, nil
+}
+
+// rollFingerprint computes a new fingerprint by incrementally hashing a previous
+// 64-bit value with a new input (portID). It uses a rotate-left, XOR, and
+// FNV-prime multiplication to mix bits.
+func rollFingerprint(prev string, portID int) string {
+	var prevVal uint64
+	fmt.Sscanf(prev, "%x", &prevVal)
+	// rotate left 11, XOR port, multiply by FNV prime
+	prevVal = (prevVal<<11 | prevVal>>(64-11)) ^ uint64(portID)
+	prevVal *= 0x00000100000001B3
+	return fmt.Sprintf("%016x", prevVal)
 }
