@@ -42,6 +42,16 @@ type nodeRow struct {
 	JSON   string
 }
 
+type sessionHistoryRow struct {
+	ID           int
+	SessionID    int
+	SessionIndex int
+	NodeID       int
+	PortID       int
+	TextDelta    string
+	CreatedAt    string
+}
+
 func databasePath() string {
 	path := strings.TrimSpace(os.Getenv("DB_PATH")) //Optional OS path ENV opption
 
@@ -569,4 +579,52 @@ func rollFingerprint(prev string, portID int) string {
 	prevVal = (prevVal<<11 | prevVal>>(64-11)) ^ uint64(portID)
 	prevVal *= 0x00000100000001B3
 	return fmt.Sprintf("%016x", prevVal)
+}
+
+func getSessionHistory(sessionID int) ([]sessionHistoryRow, error) {
+	//check session exists
+	var exists int
+	err := appDB.QueryRow(`SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?)`, sessionID).Scan(&exists)
+	if err != nil {
+		return nil, fmt.Errorf("check session exists: %w", err)
+	}
+	if exists == 0 {
+		return nil, ErrSessionNotFound
+	}
+
+	// query history rows
+	rows, err := appDB.Query(`
+		SELECT id, session_id, session_index, node_id, port_id, text_delta, created_at
+		FROM session_history
+		WHERE session_id = ?
+		ORDER BY session_index ASC`,
+		sessionID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query session history: %w", err)
+	}
+	defer rows.Close()
+
+	// scan rows
+	var history []sessionHistoryRow
+	for rows.Next() {
+		var row sessionHistoryRow
+		if err := rows.Scan(
+			&row.ID,
+			&row.SessionID,
+			&row.SessionIndex,
+			&row.NodeID,
+			&row.PortID,
+			&row.TextDelta,
+			&row.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("scan session history row: %w", err)
+		}
+		history = append(history, row)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate session history rows: %w", err)
+	}
+
+	return history, nil
 }
