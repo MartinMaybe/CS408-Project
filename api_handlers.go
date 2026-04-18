@@ -61,6 +61,19 @@ type CreateNodeResponse struct {
 	NodeID int `json:"node_id"`
 }
 
+type SessionHistoryResponse struct {
+	SessionID int                       `json:"session_id"`
+	Steps     []SessionPathStepResponse `json:"steps"`
+}
+
+type SessionPathStepResponse struct {
+	SessionIndex int    `json:"session_index"`
+	NodeID       int    `json:"node_id"`
+	NodePrompt   string `json:"node_prompt"`
+	PortID       int    `json:"port_id"`
+	PortKey      string `json:"port_key"`
+}
+
 /* Broad route handlers*/
 func sessionsAPIHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
@@ -101,6 +114,15 @@ func nodeAPIHandler(w http.ResponseWriter, r *http.Request) {
 		postNodeAPIHandler(w, r)
 	default:
 		methodNotAllowed(w, "GET, POST")
+	}
+}
+
+func sessionHistoryAPIHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		getSessionHistoryAPIHandler(w, r)
+	default:
+		methodNotAllowed(w, http.MethodGet)
 	}
 }
 
@@ -302,6 +324,35 @@ func getNodeAPIHandler(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, newNodeResponse(record))
 }
 
+func getSessionHistoryAPIHandler(w http.ResponseWriter, r *http.Request) {
+	sessionID, err := requiredQueryInt(r, "session_id")
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	steps, err := reconstructSessionPath(sessionID)
+	if errors.Is(err, ErrSessionNotFound) {
+		http.Error(w, "Session not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Println("reconstruct session path error:", err)
+		http.Error(w, "DB query error", http.StatusInternalServerError)
+		return
+	}
+
+	stepResponses := make([]SessionPathStepResponse, len(steps))
+	for i, step := range steps {
+		stepResponses[i] = newSessionPathStepResponse(step)
+	}
+
+	writeJSON(w, http.StatusOK, SessionHistoryResponse{
+		SessionID: sessionID,
+		Steps:     stepResponses,
+	})
+}
+
 /* helpers */
 func writeJSON(w http.ResponseWriter, statusCode int, payload interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -331,6 +382,16 @@ func newNodeResponse(row nodeRow) NodeResponse {
 		ID:     row.ID,
 		Kind:   row.Kind,
 		Prompt: row.Prompt,
+	}
+}
+
+func newSessionPathStepResponse(step sessionPathStep) SessionPathStepResponse {
+	return SessionPathStepResponse{
+		SessionIndex: step.SessionIndex,
+		NodeID:       step.NodeID,
+		NodePrompt:   step.NodePrompt,
+		PortID:       step.PortID,
+		PortKey:      step.PortKey,
 	}
 }
 

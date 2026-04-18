@@ -52,6 +52,14 @@ type sessionHistoryRow struct {
 	CreatedAt    string
 }
 
+type sessionPathStep struct {
+	SessionIndex int
+	NodeID       int
+	NodePrompt   string
+	PortID       int
+	PortKey      string
+}
+
 func databasePath() string {
 	path := strings.TrimSpace(os.Getenv("DB_PATH")) //Optional OS path ENV opption
 
@@ -333,7 +341,7 @@ func advanceSessionByPort(sessionID int, portID int) (string, error) {
 		pathFingerprint string
 	)
 	err = tx.QueryRow(`
-		SELECT current_node_id, path_Length, path_fingerprint
+		SELECT current_node_id, path_length, path_fingerprint
 		FROM sessions
 		WHERE id = ?`,
 		sessionID,
@@ -627,4 +635,55 @@ func getSessionHistory(sessionID int) ([]sessionHistoryRow, error) {
 	}
 
 	return history, nil
+}
+
+func reconstructSessionPath(sessionID int) ([]sessionPathStep, error) {
+	// check session exists
+	var exists int
+	err := appDB.QueryRow(`SELECT EXISTS(SELECT 1 FROM sessions WHERE id = ?)`, sessionID).Scan(&exists)
+	if err != nil {
+		return nil, fmt.Errorf("check session exists: %w", err)
+	}
+	if exists == 0 {
+		return nil, ErrSessionNotFound
+	}
+
+	rows, err := appDB.Query(`
+		SELECT
+			sh.session_index,
+			sh.node_id,
+			n.prompt,
+			sh.port_id,
+			p.port_key
+		FROM session_history sh
+		JOIN nodes n ON n.id = sh.node_id
+		JOIN ports p ON p.id = sh.port_id
+		WHERE sh.session_id = ?
+		ORDER BY sh.session_index ASC`,
+		sessionID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("query session path: %w", err)
+	}
+	defer rows.Close()
+
+	var steps []sessionPathStep
+	for rows.Next() {
+		var step sessionPathStep
+		if err := rows.Scan(
+			&step.SessionIndex,
+			&step.NodeID,
+			&step.NodePrompt,
+			&step.PortID,
+			&step.PortKey,
+		); err != nil {
+			return nil, fmt.Errorf("scan session path step: %w", err)
+		}
+		steps = append(steps, step)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate session path rows: %w", err)
+	}
+
+	return steps, nil
 }

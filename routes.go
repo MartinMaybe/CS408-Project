@@ -9,6 +9,7 @@ func registerRoutes() {
 	http.HandleFunc("/statistics", statisticsHandler)
 	http.HandleFunc("/api/sessions", sessionsAPIHandler)
 	http.HandleFunc("/api/session", sessionAPIHandler)
+	http.HandleFunc("/api/session/history", sessionHistoryAPIHandler)
 	http.HandleFunc("/api/port", portAPIHandler)
 	http.HandleFunc("/api/node", nodeAPIHandler)
 }
