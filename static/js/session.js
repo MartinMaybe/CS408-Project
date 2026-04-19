@@ -43,6 +43,9 @@
         completionPanel: document.getElementById("completionPanel"),
         resultsPanel: document.getElementById("resultsPanel"),
         resultsSummary: document.getElementById("resultsSummary"),
+        journeyPanel: document.getElementById("journeyPanel"),
+        journeyLoading: document.getElementById("journeyLoading"),
+        journeySteps: document.getElementById("journeySteps"),
         creationPanel: document.getElementById("creationPanel"),
         creationForm: document.getElementById("creationForm"),
         createKind: document.getElementById("createKind"),
@@ -337,6 +340,17 @@
         return payload;
     }
 
+    async function loadJourneyHistory() {
+        try {
+            const data = await requestJSON(
+                "/api/session/history?session_id=" + encodeURIComponent(state.sessionId)
+            );
+            renderJourneySteps(data.steps);
+        } catch (error) {
+            dom.journeyLoading.textContent = "Failed to load session path";
+        }
+    }
+
     function renderLoadingState(message) {
         state.isBusy = true;
         dom.loadingSpinner.classList.remove("d-none");
@@ -345,6 +359,7 @@
         dom.sessionMeta.textContent = "Preparing session...";
         setCompletionPanel("warning", "This branch currently ends here.");
         dom.resultsPanel.classList.add("d-none");
+        dom.journeyPanel.classList.add("d-none")
         dom.creationPanel.classList.add("d-none");
         setDecisionButtonsEnabled(false);
         setCreationControlsEnabled(false);
@@ -404,6 +419,8 @@
     function renderCompletionState() {
         dom.resultsPanel.classList.remove("d-none");
         dom.completionPanel.classList.remove("d-none");
+        dom.journeyPanel.classList.remove("d-none");
+        void loadJourneyHistory();
         dom.decisionPanel.classList.add("opacity-50");
         setDecisionButtonsEnabled(false);
 
@@ -427,6 +444,27 @@
             "This path has ended.",
             "This path has ended."
         );
+    }
+
+    function renderJourneySteps(steps) {
+        if (!steps || steps.length === 0) {
+            dom.journeyLoading.textContent = "No steps recorded for this session";
+            return;
+        }
+
+        dom.journeySteps.innerHTML = "";
+
+        steps.forEach(function (step) {
+            const li = document.createElement("li");
+            li.className = "mb-2";
+            li.innerHTML = 
+                `<span class="fw-semibold">` + step.node_prompt + "</span>" +
+                `<span class="text-muted ms-2">→ ` +  step.port_key + "</span>";
+            dom.journeySteps.appendChild(li);
+        });
+
+        dom.journeyLoading.style.display = "none";
+        dom.journeySteps.style.display = "block";
     }
 
     function renderErrorState(error) {
