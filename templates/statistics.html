@@ -11,13 +11,31 @@
         <p class="mb-1 text-muted">Most common answer overall: Yes (63%)</p>
     </div>
 
-    <div class="border border-dark rounded p-4 bg-white">
+    <div class="border border-dark rounded p-4 bg-white mb-4">
         <h4 class="mb-3">Top Statistics</h4>
 
         <p class="mb-1 text-muted">Most visited decision: "Do you like movies?"</p>
         <p class="mb-1 text-muted">Longest session recorded: 18 decisions</p>
         <p class="mb-1 text-muted">Most active contributor: User #104</p>
     </div>
+
+    <div class="border border-dark rounded p-4 bg-white mb-4">
+        <h4 class="mb-3">Search Past Sessions</h4>
+
+        <div class="input-group mb-3">
+            <input id="sessionIdInput" type="number" class="form-control" placeholder="Enter a session ID" min="1">
+            <button id="sessionSearchBtn" class="btn btn-dark" type="button">Search</button>
+        </div>
+
+        <div id="searchError" class="text-danger d-none mb-3"></div>
+        
+        <div id="searchResult" class="d-none">
+            <p id="searchMeta" class="text-muted mb-3"></p>
+            <ol id="searchSteps" class="mb-0"></ol>
+        </div>
+    </div>
 </div>
+
+<script src="/static/js/statistics.js"></script>
 
 {{template "footer" .}}
