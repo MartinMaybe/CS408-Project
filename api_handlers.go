@@ -95,6 +95,15 @@ func sessionAPIHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func sessionHistoryAPIHandler(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		getSessionHistoryAPIHandler(w, r)
+	default:
+		methodNotAllowed(w, http.MethodGet)
+	}
+}
+
 func portAPIHandler(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -114,15 +123,6 @@ func nodeAPIHandler(w http.ResponseWriter, r *http.Request) {
 		postNodeAPIHandler(w, r)
 	default:
 		methodNotAllowed(w, "GET, POST")
-	}
-}
-
-func sessionHistoryAPIHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		getSessionHistoryAPIHandler(w, r)
-	default:
-		methodNotAllowed(w, http.MethodGet)
 	}
 }
 

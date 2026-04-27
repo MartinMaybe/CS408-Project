@@ -128,6 +128,83 @@ func TestSessionAPIHandlerRejectsPortFromDifferentNode(t *testing.T) {
 	}
 }
 
+func TestSessionHistoryAPIHandlerReturnsHistory(t *testing.T) {
+	setupTestAppDB(t)
+
+	sessionID := createSessionViaAPI(t)
+	rootYesPortID := getPortViaAPI(t, 1, "yes")
+	advanceSessionViaAPI(t, sessionID, rootYesPortID)
+	nodeTwoNoPortID := getPortViaAPI(t, 2, "no")
+	advanceSessionViaAPI(t, sessionID, nodeTwoNoPortID)
+
+	history := getSessionHistoryViaAPI(t, sessionID)
+	if len(history) != 2 {
+		t.Fatalf("expected 2 history rows, got %d", len(history))
+	}
+
+	firstStep := history[0]
+	if firstStep.SessionIndex != 0 || firstStep.NodeID != 1 || firstStep.NodePrompt != "Is it an animal?" || firstStep.PortID != rootYesPortID || firstStep.PortKey != "yes" {
+		t.Fatalf("unexpected first history step: %+v", firstStep)
+	}
+
+	secondStep := history[1]
+	if secondStep.SessionIndex != 1 || secondStep.NodeID != 2 || secondStep.NodePrompt != "Does it have fur?" || secondStep.PortID != nodeTwoNoPortID || secondStep.PortKey != "no" {
+		t.Fatalf("unexpected second history step: %+v", secondStep)
+	}
+}
+
+func TestSessionHistoryAPIHandlerReturnsEmptyHistoryForNewSession(t *testing.T) {
+	setupTestAppDB(t)
+
+	sessionID := createSessionViaAPI(t)
+	history := getSessionHistoryViaAPI(t, sessionID)
+	if len(history) != 0 {
+		t.Fatalf("expected empty history, got %d rows", len(history))
+	}
+}
+
+func TestSessionHistoryAPIHandlerRequiresSessionID(t *testing.T) {
+	setupTestAppDB(t)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/session/history", nil)
+	response := httptest.NewRecorder()
+
+	sessionHistoryAPIHandler(response, request)
+
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected status %d, got %d", http.StatusBadRequest, response.Code)
+	}
+}
+
+func TestSessionHistoryAPIHandlerReturnsNotFound(t *testing.T) {
+	setupTestAppDB(t)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/session/history?session_id=999", nil)
+	response := httptest.NewRecorder()
+
+	sessionHistoryAPIHandler(response, request)
+
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("expected status %d, got %d", http.StatusNotFound, response.Code)
+	}
+}
+
+func TestSessionHistoryAPIHandlerRejectsPost(t *testing.T) {
+	setupTestAppDB(t)
+
+	request := httptest.NewRequest(http.MethodPost, "/api/session/history?session_id=1", nil)
+	response := httptest.NewRecorder()
+
+	sessionHistoryAPIHandler(response, request)
+
+	if response.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status %d, got %d", http.StatusMethodNotAllowed, response.Code)
+	}
+	if allowHeader := response.Header().Get("Allow"); allowHeader != http.MethodGet {
+		t.Fatalf("expected Allow header %q, got %q", http.MethodGet, allowHeader)
+	}
+}
+
 func TestPortAPIHandlerReturnsPortID(t *testing.T) {
 	setupTestAppDB(t)
 
@@ -406,4 +483,31 @@ func advanceSessionViaAPI(t *testing.T, sessionID int, portID int) SessionStatus
 	}
 
 	return statusResponse
+}
+
+func getSessionHistoryViaAPI(t *testing.T, sessionID int) []SessionPathStepResponse {
+	t.Helper()
+
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/session/history?session_id="+strconv.Itoa(sessionID),
+		nil,
+	)
+	response := httptest.NewRecorder()
+
+	sessionHistoryAPIHandler(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, response.Code)
+	}
+
+	var history SessionHistoryResponse
+	if err := json.NewDecoder(response.Body).Decode(&history); err != nil {
+		t.Fatalf("decode session history response: %v", err)
+	}
+	if history.SessionID != sessionID {
+		t.Fatalf("expected session ID %d, got %d", sessionID, history.SessionID)
+	}
+
+	return history.Steps
 }

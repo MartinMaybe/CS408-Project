@@ -35,3 +35,31 @@ uses Docker for containerization and simplified deployment.
 ## Team Workflow
 
 Single repo with collaborators, issues/stories are made on (TBD) scrumboard, issues are operated on with seperate branches and PR's used to implement changes on main.
+
+## Stress Testing
+
+Run the web server in one terminal:
+
+```bash
+go run .
+```
+
+Then run the API-driven stress test from another terminal:
+
+```bash
+go run . stress -sessions 500 -max-depth 25
+```
+
+The stress test creates sessions through the public API, randomly selects yes/no
+ports, and creates a generated yes/no question whenever it naturally reaches a
+dangling branch. It logs every API operation by default.
+
+Useful flags:
+
+```bash
+go run . stress -base-url http://localhost:8080 -sessions 1000 -max-depth 30 -seed 12345 -verbose=true
+```
+
+The generated answers are probabilistic but intentionally biased by prompt
+contents, time, session number, and depth so the data is less uniform than a
+coin flip. Use `-progress=false` to disable the live status bar.

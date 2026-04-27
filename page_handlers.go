@@ -26,7 +26,15 @@ func landingHandler(w http.ResponseWriter, r *http.Request) {
 func statisticsHandler(w http.ResponseWriter, r *http.Request) {
 	log.Println("statisticsHandler was called")
 
-	err := templates.ExecuteTemplate(w, "statistics.html", newPage("Statistics"))
+	statistics, err := getStatisticsSummary()
+	if err != nil {
+		log.Println("statistics error:", err)
+		http.Error(w, "Statistics unavailable", http.StatusInternalServerError)
+		return
+	}
+
+	page := newStatisticsPageData(newPage("Statistics"), statistics)
+	err = templates.ExecuteTemplate(w, "statistics.html", page)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}

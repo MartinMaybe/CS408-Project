@@ -190,6 +190,46 @@ func TestAdvanceSessionByPortMovesSessionAndIncrementsTakenCount(t *testing.T) {
 	}
 }
 
+func TestAdvanceSessionByPortRecordsHistoryWithZeroBasedIndexes(t *testing.T) {
+	setupTestAppDB(t)
+
+	sessionID, err := createSession()
+	if err != nil {
+		t.Fatalf("createSession returned error: %v", err)
+	}
+
+	rootYesPortID, err := getPortIDByNodeAndKey(1, "yes")
+	if err != nil {
+		t.Fatalf("get root yes port: %v", err)
+	}
+	if _, err := advanceSessionByPort(sessionID, rootYesPortID); err != nil {
+		t.Fatalf("advance root yes: %v", err)
+	}
+
+	nodeTwoNoPortID, err := getPortIDByNodeAndKey(2, "no")
+	if err != nil {
+		t.Fatalf("get node 2 no port: %v", err)
+	}
+	if _, err := advanceSessionByPort(sessionID, nodeTwoNoPortID); err != nil {
+		t.Fatalf("advance node 2 no: %v", err)
+	}
+
+	history, err := reconstructSessionPath(sessionID)
+	if err != nil {
+		t.Fatalf("reconstructSessionPath returned error: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("expected 2 history rows, got %d", len(history))
+	}
+
+	if history[0].SessionIndex != 0 || history[0].NodeID != 1 || history[0].PortID != rootYesPortID || history[0].PortKey != "yes" {
+		t.Fatalf("unexpected first history row: %+v", history[0])
+	}
+	if history[1].SessionIndex != 1 || history[1].NodeID != 2 || history[1].PortID != nodeTwoNoPortID || history[1].PortKey != "no" {
+		t.Fatalf("unexpected second history row: %+v", history[1])
+	}
+}
+
 func TestAdvanceSessionByPortCompletesDanglingBranch(t *testing.T) {
 	setupTestAppDB(t)
 
@@ -244,6 +284,103 @@ func TestAdvanceSessionByPortCompletesDanglingBranch(t *testing.T) {
 	}
 	if takenCount != 1 {
 		t.Fatalf("expected terminal taken_count 1, got %d", takenCount)
+	}
+}
+
+func TestAdvanceSessionByPortRecordsTerminalHistory(t *testing.T) {
+	setupTestAppDB(t)
+
+	sessionID, err := createSession()
+	if err != nil {
+		t.Fatalf("createSession returned error: %v", err)
+	}
+
+	rootYesPortID, err := getPortIDByNodeAndKey(1, "yes")
+	if err != nil {
+		t.Fatalf("get root yes port: %v", err)
+	}
+	if _, err := advanceSessionByPort(sessionID, rootYesPortID); err != nil {
+		t.Fatalf("advance root yes: %v", err)
+	}
+
+	nodeTwoYesPortID, err := getPortIDByNodeAndKey(2, "yes")
+	if err != nil {
+		t.Fatalf("get node 2 yes port: %v", err)
+	}
+	if _, err := advanceSessionByPort(sessionID, nodeTwoYesPortID); err != nil {
+		t.Fatalf("advance node 2 yes: %v", err)
+	}
+
+	terminalPortID, err := getPortIDByNodeAndKey(4, "yes")
+	if err != nil {
+		t.Fatalf("get node 4 yes port: %v", err)
+	}
+	if status, err := advanceSessionByPort(sessionID, terminalPortID); err != nil || status != "complete" {
+		t.Fatalf("expected terminal status complete, got status=%q err=%v", status, err)
+	}
+
+	history, err := reconstructSessionPath(sessionID)
+	if err != nil {
+		t.Fatalf("reconstructSessionPath returned error: %v", err)
+	}
+	if len(history) != 3 {
+		t.Fatalf("expected 3 history rows, got %d", len(history))
+	}
+
+	lastStep := history[2]
+	if lastStep.SessionIndex != 2 || lastStep.NodeID != 4 || lastStep.PortID != terminalPortID || lastStep.PortKey != "yes" {
+		t.Fatalf("unexpected terminal history row: %+v", lastStep)
+	}
+}
+
+func TestAdvanceSessionByPortUpdatesPathFingerprint(t *testing.T) {
+	setupTestAppDB(t)
+
+	sessionID, err := createSession()
+	if err != nil {
+		t.Fatalf("createSession returned error: %v", err)
+	}
+
+	sessionRecord, err := getSessionByID(sessionID)
+	if err != nil {
+		t.Fatalf("getSessionByID returned error: %v", err)
+	}
+	if sessionRecord.PathFingerprint != "" {
+		t.Fatalf("expected empty initial fingerprint, got %q", sessionRecord.PathFingerprint)
+	}
+
+	rootYesPortID, err := getPortIDByNodeAndKey(1, "yes")
+	if err != nil {
+		t.Fatalf("get root yes port: %v", err)
+	}
+	if _, err := advanceSessionByPort(sessionID, rootYesPortID); err != nil {
+		t.Fatalf("advance root yes: %v", err)
+	}
+
+	sessionRecord, err = getSessionByID(sessionID)
+	if err != nil {
+		t.Fatalf("getSessionByID after first advance returned error: %v", err)
+	}
+	expectedFingerprint := expectedPathFingerprint(rootYesPortID)
+	if sessionRecord.PathFingerprint != expectedFingerprint {
+		t.Fatalf("expected fingerprint %q, got %q", expectedFingerprint, sessionRecord.PathFingerprint)
+	}
+
+	nodeTwoNoPortID, err := getPortIDByNodeAndKey(2, "no")
+	if err != nil {
+		t.Fatalf("get node 2 no port: %v", err)
+	}
+	if _, err := advanceSessionByPort(sessionID, nodeTwoNoPortID); err != nil {
+		t.Fatalf("advance node 2 no: %v", err)
+	}
+
+	sessionRecord, err = getSessionByID(sessionID)
+	if err != nil {
+		t.Fatalf("getSessionByID after second advance returned error: %v", err)
+	}
+	expectedFingerprint = expectedPathFingerprint(rootYesPortID, nodeTwoNoPortID)
+	if sessionRecord.PathFingerprint != expectedFingerprint {
+		t.Fatalf("expected fingerprint %q, got %q", expectedFingerprint, sessionRecord.PathFingerprint)
 	}
 }
 
@@ -343,4 +480,13 @@ func TestGetSessionByIDReturnsNullCurrentNodeError(t *testing.T) {
 	if !errors.Is(err, ErrNullCurrentNode) {
 		t.Fatalf("expected ErrNullCurrentNode, got %v", err)
 	}
+}
+
+func expectedPathFingerprint(portIDs ...int) string {
+	fingerprint := ""
+	for _, portID := range portIDs {
+		fingerprint = rollFingerprint(fingerprint, portID)
+	}
+
+	return fingerprint
 }

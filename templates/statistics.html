@@ -2,21 +2,122 @@
 <html lang="en">
 {{template "header" .}}
 
-<div class="container mt-5" style="max-width:800px;">
-    <div class="border border-dark rounded p-4 bg-white mb-4">
-        <h4 class="mb-3">Global Statistics</h4>
-
-        <p class="mb-1 text-muted">Total sessions created: 1,284</p>
-        <p class="mb-1 text-muted">Average decisions per session: 6.2</p>
-        <p class="mb-1 text-muted">Most common answer overall: Yes (63%)</p>
+<div class="container my-5 pb-5" style="max-width:1000px;">
+    <div class="mb-4">
+        <h1 class="h3 mb-1">Global Statistics</h1>
+        <p class="text-muted mb-0">
+            Live totals from the public decision tree.
+        </p>
     </div>
 
-    <div class="border border-dark rounded p-4 bg-white mb-4">
-        <h4 class="mb-3">Top Statistics</h4>
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="border border-dark rounded p-4 bg-white h-100">
+                <p class="text-muted mb-1">Total nodes</p>
+                <h2 class="h4 mb-0">{{.Statistics.TotalNodes}}</h2>
+            </div>
+        </div>
 
-        <p class="mb-1 text-muted">Most visited decision: "Do you like movies?"</p>
-        <p class="mb-1 text-muted">Longest session recorded: 18 decisions</p>
-        <p class="mb-1 text-muted">Most active contributor: User #104</p>
+        <div class="col-md-3">
+            <div class="border border-dark rounded p-4 bg-white h-100">
+                <p class="text-muted mb-1">Total decisions</p>
+                <h2 class="h4 mb-0">{{.Statistics.TotalDecisions}}</h2>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="border border-dark rounded p-4 bg-white h-100">
+                <p class="text-muted mb-1">Sessions started</p>
+                <h2 class="h4 mb-0">{{.Statistics.SessionsStarted}}</h2>
+            </div>
+        </div>
+
+        <div class="col-md-3">
+            <div class="border border-dark rounded p-4 bg-white h-100">
+                <p class="text-muted mb-1">Average depth</p>
+                <h2 class="h4 mb-0">{{printf "%.1f" .Statistics.AverageDepth}}</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="border border-dark rounded p-4 bg-white h-100">
+                <h2 class="h5 mb-3">Deepest Path</h2>
+
+                {{if .Statistics.DeepestPath.HasData}}
+                    <p class="mb-1 text-muted">
+                        Session #{{.Statistics.DeepestPath.SessionID}} reached {{.Statistics.DeepestPath.Depth}} decisions.
+                    </p>
+                    {{if .Statistics.DeepestPath.PathFingerprint}}
+                        <p class="mb-0 text-muted">
+                            Fingerprint: <code>{{.Statistics.DeepestPath.PathFingerprint}}</code>
+                        </p>
+                    {{else}}
+                        <p class="mb-0 text-muted">Fingerprint will appear after the first decision.</p>
+                    {{end}}
+                {{else}}
+                    <p class="mb-0 text-muted">No sessions have started yet.</p>
+                {{end}}
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="border border-dark rounded p-4 bg-white h-100">
+                <h2 class="h5 mb-3">Aggregate Yes / No Ratio</h2>
+
+                {{if .Statistics.YesNoRatio.HasData}}
+                    <p class="mb-1 text-muted">
+                        Yes: {{.Statistics.YesNoRatio.YesCount}} ({{printf "%.1f" .Statistics.YesNoRatio.YesPercent}}%)
+                    </p>
+                    <p class="mb-0 text-muted">
+                        No: {{.Statistics.YesNoRatio.NoCount}} ({{printf "%.1f" .Statistics.YesNoRatio.NoPercent}}%)
+                    </p>
+                {{else}}
+                    <p class="mb-0 text-muted">No yes/no decisions have been recorded yet.</p>
+                {{end}}
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="border border-dark rounded p-4 bg-white h-100">
+                <h2 class="h5 mb-3">Most Divisive Question</h2>
+
+                {{if .Statistics.MostDivisiveQuestion.HasData}}
+                    <p class="mb-2">"{{.Statistics.MostDivisiveQuestion.Prompt}}"</p>
+                    <p class="mb-1 text-muted">
+                        Yes: {{.Statistics.MostDivisiveQuestion.YesCount}} ({{printf "%.1f" .Statistics.MostDivisiveQuestion.YesPercent}}%)
+                    </p>
+                    <p class="mb-0 text-muted">
+                        No: {{.Statistics.MostDivisiveQuestion.NoCount}} ({{printf "%.1f" .Statistics.MostDivisiveQuestion.NoPercent}}%)
+                    </p>
+                {{else}}
+                    <p class="mb-0 text-muted">
+                        Not enough data yet. Questions need at least {{.Statistics.MinimumVoteThreshold}} votes to qualify.
+                    </p>
+                {{end}}
+            </div>
+        </div>
+
+        <div class="col-lg-6">
+            <div class="border border-dark rounded p-4 bg-white h-100">
+                <h2 class="h5 mb-3">Least Divisive Question</h2>
+
+                {{if .Statistics.LeastDivisiveQuestion.HasData}}
+                    <p class="mb-2">"{{.Statistics.LeastDivisiveQuestion.Prompt}}"</p>
+                    <p class="mb-1 text-muted">
+                        Yes: {{.Statistics.LeastDivisiveQuestion.YesCount}} ({{printf "%.1f" .Statistics.LeastDivisiveQuestion.YesPercent}}%)
+                    </p>
+                    <p class="mb-0 text-muted">
+                        No: {{.Statistics.LeastDivisiveQuestion.NoCount}} ({{printf "%.1f" .Statistics.LeastDivisiveQuestion.NoPercent}}%)
+                    </p>
+                {{else}}
+                    <p class="mb-0 text-muted">
+                        Not enough data yet. Questions need at least {{.Statistics.MinimumVoteThreshold}} votes to qualify.
+                    </p>
+                {{end}}
+            </div>
+        </div>
     </div>
 
     <div class="border border-dark rounded p-4 bg-white mb-4">

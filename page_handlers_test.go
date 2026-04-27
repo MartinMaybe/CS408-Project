@@ -36,6 +36,9 @@ func TestSessionHandlerRendersSessionShell(t *testing.T) {
 }
 
 func TestStatisticsHandlerRendersStatisticsPage(t *testing.T) {
+	setupTestAppDB(t)
+	createSessionWithChoices(t, "yes", "no")
+
 	req := httptest.NewRequest(http.MethodGet, "/statistics", nil)
 	w := httptest.NewRecorder()
 
@@ -46,5 +49,14 @@ func TestStatisticsHandlerRendersStatisticsPage(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), "Global Statistics") {
 		t.Fatalf("expected statistics page to include statistics heading")
+	}
+	if !strings.Contains(w.Body.String(), "Total decisions") {
+		t.Fatalf("expected statistics page to include total decisions")
+	}
+	if !strings.Contains(w.Body.String(), ">2<") {
+		t.Fatalf("expected statistics page to render real decision count")
+	}
+	if strings.Contains(w.Body.String(), "1,284") || strings.Contains(w.Body.String(), "Do you like movies?") {
+		t.Fatalf("expected statistics page to replace placeholder content")
 	}
 }
