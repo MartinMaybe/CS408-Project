@@ -1,3 +1,28 @@
+// This file implements the HTTP API layer for the decision tree system.
+//
+// This file defines:
+//   - Request/response structs used for JSON communication
+//   - Route handlers for sessions, nodes, ports, and history
+//   - Input validation and error handling for API endpoints
+//
+// Core concepts:
+//   - Sessions represent a traversal through the decision tree
+//   - Nodes contain prompts and branching behavior
+//   - Ports represent choices leading from one node to another
+//   - Session history tracks the path taken through the tree
+//
+// Endpoints:
+//   - POST   /api/sessions           create session
+//   - GET    /api/session            fetch session state
+//   - POST   /api/session            advance session by port
+//   - GET    /api/session/history    retrieve session path
+//   - GET    /api/node               fetch node
+//   - POST   /api/node               create node
+//   - GET    /api/port               lookup port ID
+//   - POST   /api/port               attach port to node
+//
+// Handlers validate input, call database-layer functions, and
+// return JSON responses with appropriate status codes.
 package main
 
 import (

@@ -1,3 +1,13 @@
+// This file provides statistics and analytics for the decision tree.
+//
+// This file is responsible for:
+//   - Combining metrics from sessions, nodes, and history data
+//   - Computing summary statistics (counts, averages, ratios)
+//   - Identifying patterns (deepest paths, divisive questions)
+//   - Preparing data structures for rendering the stats page
+//
+// Statistics are computed from session activity and are used
+// to see how users traverse the decision tree.
 package main
 
 import (
@@ -175,6 +185,8 @@ func getYesNoRatioStat() (yesNoRatioStat, error) {
 	return stat, nil
 }
 
+// Identifies the most and least divisive yes/no questions based on
+// responses and vote distribution.
 func getQuestionHighlightStats() (questionHighlightStat, questionHighlightStat, error) {
 	rows, err := appDB.Query(`
 		SELECT

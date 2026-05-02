@@ -1,3 +1,12 @@
+// This file implements a decision-tree engine backed by SQLite.
+//
+// It supports:
+// - Session creation and traversal
+// - Node and port management
+// - Session history tracking and reconstruction
+//
+// Sessions progress through nodes via ports, forming a path tracked
+// by a rolling fingerprint and stored history.
 package main
 
 import (
@@ -279,6 +288,7 @@ func createNode(kind string, prompt string, jsonText string) (int, error) {
 	return nodeID, nil
 }
 
+// Connects a port to a target node if it's not already connected.
 func attachPortToNode(portID int, toNodeID int) error {
 	exists, err := nodeExists(toNodeID)
 	if err != nil {
@@ -327,6 +337,9 @@ func attachPortToNode(portID int, toNodeID int) error {
 	return ErrPortNotFound
 }
 
+// Advances a session using the given port. Validates the transition,
+// updates session state, logs history, and returns "ok" or "complete"
+// if a terminal node is reached.
 func advanceSessionByPort(sessionID int, portID int) (string, error) {
 	tx, err := appDB.Begin()
 	if err != nil {
@@ -637,6 +650,8 @@ func getSessionHistory(sessionID int) ([]sessionHistoryRow, error) {
 	return history, nil
 }
 
+// Builds a readable sequence of steps with the node prompt and
+// chosen port for a session.
 func reconstructSessionPath(sessionID int) ([]sessionPathStep, error) {
 	// check session exists
 	var exists int

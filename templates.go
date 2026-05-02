@@ -1,3 +1,12 @@
+// This file defines shared UI structures and template configuration.
+//
+// This file is responsible for:
+//   - Defining base page data (title, timestamp)
+//   - Initializing and parsing HTML templates
+//   - Providing helper functions for page data
+//
+// Templates are parsed at startup and reused at handlers
+// for rendering UI pages.
 package main
 
 import (

@@ -1,3 +1,11 @@
+// This file provides HTTP handlers for rendering HTML pages.
+//
+// This file contains UI route handlers responsible for:
+//   - Serving pages (landing, session, statistics)
+//   - Fetching data for rendering
+//   - Returning server-rendered HTML responses
+//
+// Handlers in this file focus on user-facing views.
 package main
 
 import (

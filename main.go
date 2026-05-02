@@ -1,3 +1,14 @@
+// Package main is the entry point for the decision tree application.
+//
+// This file is responsible for:
+//   - Initializing database
+//   - Starting HTTP server
+//   - Registering API routes
+//   - Optionally running stress tests
+//
+// Usage:
+//   - Run normally to start the API server on :8080
+//   - Run with "stress" or "stress-test" to execute stress testing logic
 package main
 
 import (

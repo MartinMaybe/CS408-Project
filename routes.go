@@ -1,3 +1,9 @@
+// This file defines application route registration.
+//
+// This file maps HTTP paths to their handlers:
+//   - Static asset serving
+//   - HTML page routes (landing, session, statistics)
+//   - API endpoints for sessions, nodes, ports, and history
 package main
 
 import "net/http"
